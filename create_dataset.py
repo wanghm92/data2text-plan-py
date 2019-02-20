@@ -1,17 +1,25 @@
 # -*- coding: utf-8 -*-
 from text2num import text2num
-import codecs, json
+import codecs, json, sys, io, os
+import pdb
+
+# add all records to valid and test
+CWD = os.getcwd()
+DATA = sys.argv[1]
+INPUT_PATH = os.path.join("rotowire", DATA)
+print(INPUT_PATH)
+os.chdir(INPUT_PATH)
+
+JSON = "%s.json"%DATA  # input train.json file
+ORACLE_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+INTER_CONTENT_PLAN = '%s_content_plan_tks.txt'%DATA  # intermediate content plan input to second stage
+SRC_FILE = 'src_%s.txt'%DATA  # src file input to first stage
+TRAIN_TGT_FILE = "tgt_%s.txt"%DATA  # tgt file of second stage
+CONTENT_PLAN_OUT = '%s_content_plan_ids.txt'%DATA  # content plan output of first stage
 
 RECORD_DELIM = " "
 DELIM = u"￨"
 NUM_PLAYERS = 13
-
-JSON = "rotowire/train.json"  # input train.json file
-ORACLE_IE_OUTPUT = 'roto_train-beam5_gens.h5-tuples.txt'  # oracle content plan obtained from IE tool
-INTER_CONTENT_PLAN = 'rotowire/inter/train_content_plan.txt'  # intermediate content plan input to second stage
-SRC_FILE = 'rotowire/src_train.txt'  # src file input to first stage
-TRAIN_TGT_FILE = "rotowire/tgt_train.txt"  # tgt file of second stage
-CONTENT_PLAN_OUT = 'rotowire/train_content_plan.txt'  # content plan output of first stage
 
 HOME = "HOME"
 AWAY = "AWAY"
@@ -59,9 +67,42 @@ def add_special_records(records):
     record.append(PAD_WORD)
     records.append(DELIM.join(record))
 
+def get_player_idxs(entry):
+    nplayers = 0
+    home_players, vis_players = [], []
+    for k, v in entry["box_score"]["PTS"].iteritems():
+        nplayers += 1
 
-def box_preproc2(entry):
+    num_home, num_vis = 0, 0
+    for i in xrange(nplayers):
+        player_city = entry["box_score"]["TEAM_CITY"][str(i)]
+        if player_city == entry["home_city"]:
+            if len(home_players) < NUM_PLAYERS:
+                home_players.append(str(i))
+                num_home += 1
+        else:
+            if len(vis_players) < NUM_PLAYERS:
+                vis_players.append(str(i))
+                num_vis += 1
+
+    if entry["home_city"] == entry["vis_city"] and entry["home_city"] == "Los Angeles":
+        home_players, vis_players = [], []
+        num_home, num_vis = 0, 0
+        for i in xrange(nplayers):
+            if len(vis_players) < NUM_PLAYERS:
+                vis_players.append(str(i))
+                num_vis += 1
+            elif len(home_players) < NUM_PLAYERS:
+                home_players.append(str(i))
+                num_home += 1
+
+    return home_players, vis_players
+
+def box_prepro(entry):
+    # an entry contains 9 items: home_name, box_score, home_city, vis_name, summary, vis_line, vis_city, day, home_line
     records = []
+
+    # pre-pending special tokens, UNK, PAD, SOS, EOS
     add_special_records(records)
 
     home_players, vis_players = get_player_idxs(entry)
@@ -73,7 +114,7 @@ def box_preproc2(entry):
                 rulkey = key.split('-')[1]
                 val = entry["box_score"][rulkey][player_key] if player_key is not None else "N/A"
                 record = []
-                record.append(val.replace(" ","_"))
+                record.append(val.replace(" ", "_"))
                 record.append(player_name.replace(" ","_"))
                 record.append(rulkey)
                 record.append(HOME if ii == 0 else AWAY)
@@ -94,7 +135,7 @@ def box_preproc2(entry):
         record.append(AWAY)
         records.append(DELIM.join(record))
 
-    return records
+    return records, home_players, vis_players
 
 def get_ents(thing):
     players = set()
@@ -140,16 +181,16 @@ def get_ents(thing):
                     if len(piece) > 1 and piece not in ["II", "III", "Jr.", "Jr"]:
                         entset.add(piece)
 
-    all_ents = players | teams | cities
+    all_ents = players | teams | cities  # union of sets
 
     return all_ents, players, teams, cities, total_players, total_teams, total_cities
-
 
 def resolve_name(name, total_players):
     for player_name in total_players:
         if name in player_name.split():
             return player_name
     return name
+
 def resolve_team_name(name, total_teams):
     for team_name in total_teams:
         if name in team_name.split():
@@ -158,42 +199,30 @@ def resolve_team_name(name, total_teams):
             return team_name
     return name
 
-def get_player_idxs(entry):
-    nplayers = 0
-    home_players, vis_players = [], []
-    for k, v in entry["box_score"]["PTS"].iteritems():
-        nplayers += 1
-
-    num_home, num_vis = 0, 0
-    for i in xrange(nplayers):
-        player_city = entry["box_score"]["TEAM_CITY"][str(i)]
-        if player_city == entry["home_city"]:
-            if len(home_players) < NUM_PLAYERS:
-                home_players.append(str(i))
-                num_home += 1
-        else:
-            if len(vis_players) < NUM_PLAYERS:
-                vis_players.append(str(i))
-                num_vis += 1
-
-    if entry["home_city"] == entry["vis_city"] and entry["home_city"] == "Los Angeles":
-        home_players, vis_players = [], []
-        num_home, num_vis = 0, 0
-        for i in xrange(nplayers):
-            if len(vis_players) < NUM_PLAYERS:
-                vis_players.append(str(i))
-                num_vis += 1
-            elif len(home_players) < NUM_PLAYERS:
-                home_players.append(str(i))
-                num_home += 1
-
-    return home_players, vis_players
-
 def replace(input):
     return input.replace(" ", "_")
 
+def create_record(value, name, record_type, homeoraway):
+    record = []
+    record.append(value)
+    record.append(name.replace(" ", "_"))
+    record.append(record_type)
+    record.append(homeoraway)
+    return record
+
+# read original json file
 with codecs.open(JSON, "r", "utf-8") as f:
     trdata = json.load(f)
+
+print "Total number of records: "
+print len(trdata)
+x = trdata[0]
+print x.keys()
+for i in x.keys():
+    print i
+    if isinstance(x[i], dict):
+        y = x[i]
+        print y.keys()
 
 output_instances = []
 instance_count = -1 #exclude the first blank line of output
@@ -206,35 +235,29 @@ src_instances = []
 src_instance = ''
 summary = ''
 
+cnt = 0
 
-def create_record(value, name, record_type, homeoraway):
-    record = []
-    record.append(value)
-    record.append(name.replace(" ", "_"))
-    record.append(record_type)
-    record.append(homeoraway)
-    return record
-
-
+# -------------------------- Conversion --------------------------#
 for line in open(ORACLE_IE_OUTPUT):
-    if len(line.strip())==0:
+    if len(line.strip()) == 0:
         exists = set()
         name_exists = set()
         instance_count += 1
-        if instance_count>=1:
-            if len(output)>0:
+        if instance_count >= 1:
+            if len(output) > 0:
                 outputs.append(RECORD_DELIM.join(output))
                 summaries.append(summary)
                 src_instances.append(src_instance)
+            else:
+                cnt += 1
             output = []
             src_instance = ''
             summary = ''
 
         entry = trdata[instance_count]
-        records = box_preproc2(entry)
+        records, home_players, vis_players = box_prepro(entry)
         src_instance = " ".join(records)
         all_ents, players, teams, cities, total_players, total_teams, total_cities = get_ents(entry)
-        home_players, vis_players = get_player_idxs(entry)
         box_score = entry["box_score"]
         player_name_map = {y: x for x, y in box_score['PLAYER_NAME'].iteritems()}
         home_line_score = entry["home_line"]
@@ -250,7 +273,7 @@ for line in open(ORACLE_IE_OUTPUT):
         if record_type.startswith("PLAYER-"):
             record_type = record_type[len("PLAYER-"):]
 
-        name = name.replace("UNK","").strip()
+        name = name.replace("UNK", "").strip()
         if name == 'Los Angeles' and 'LA' in total_cities:
             name = 'LA'
         if name in total_players:
@@ -268,7 +291,9 @@ for line in open(ORACLE_IE_OUTPUT):
 
         record_added = False
         if not (name, record_type, int(value)) in exists:
-            if name in player_name_map and record_type in box_score and box_score[record_type][player_name_map[name]].isdigit() and  int(box_score[record_type][player_name_map[name]]) == int(value):
+            if name in player_name_map and record_type in box_score \
+                    and box_score[record_type][player_name_map[name]].isdigit() \
+                    and int(box_score[record_type][player_name_map[name]]) == int(value):
                 homeoraway = ""
                 if player_name_map[name] in home_players:
                     homeoraway = "HOME"
@@ -313,28 +338,30 @@ for line in open(ORACLE_IE_OUTPUT):
                 exists.add((name, record_type, int(value)))
                 name_exists.add(name)
 
+print(instance_count)
+print cnt
+
+# append last entry
 outputs.append(RECORD_DELIM.join(output))
 summaries.append(summary)
 src_instances.append(src_instance)
 
-output_file = open(INTER_CONTENT_PLAN, 'w')
-for output in outputs:
-    output_file.write(output.encode("utf-8"))
-    output_file.write('\n')
-output_file.close()
+# content plans
+with io.open(INTER_CONTENT_PLAN, 'w', encoding='utf-8') as output_file:
+    for output in outputs:
+        output_file.write("%s\n" % output)
 
-summary_file = open(TRAIN_TGT_FILE,'w')
-for summary in summaries:
-    summary = [word.encode("utf-8") for word in summary]
-    summary_file.write(" ".join(summary))
-    summary_file.write("\n")
-summary_file.close()
+# output summary
+with io.open(TRAIN_TGT_FILE, 'w', encoding='utf-8') as summary_file:
+    for summary in summaries:
+        # summary = [word.encode("utf-8") for word in summary]
+        summary_file.write("%s\n" % " ".join(summary))
 
-src_file = open(SRC_FILE, 'w')
-for src_instance in src_instances:
-    src_file.write(src_instance.encode("utf-8"))
-    src_file.write("\n")
-src_file.close()
+# all input records
+with io.open(SRC_FILE, 'w', encoding='utf-8') as src_file:
+    for src_instance in src_instances:
+        src_file.write("%s\n" % src_instance)
+        # src_file.write("\n")
 
 inputs = []
 content_plans = []
@@ -346,14 +373,16 @@ with codecs.open(SRC_FILE, "r", "utf-8") as corpus_file:
         inputs.append(line.split())
 
 outputs = []
-for i, input in enumerate(inputs):
+for i, x in enumerate(inputs):
     content_plan = content_plans[i]
     output = []
     for record in content_plan:
-        output.append(str(input.index(record)))
+        output.append(str(x.index(record)))
     outputs.append(" ".join(output))
 
 output_file = open(CONTENT_PLAN_OUT, 'w')
 output_file.write("\n".join(outputs))
 output_file.write("\n")
 output_file.close()
+
+os.chdir(CWD)

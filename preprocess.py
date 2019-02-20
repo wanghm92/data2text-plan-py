@@ -10,6 +10,7 @@ import torch
 
 import onmt.io
 import opts
+from pprint import pprint
 
 
 def check_existing_pt_files(opt):
@@ -34,6 +35,8 @@ def parse_args():
 
     opt = parser.parse_args()
     torch.manual_seed(opt.seed)
+
+    pprint(dict(vars(opt)))
 
     check_existing_pt_files(opt)
 

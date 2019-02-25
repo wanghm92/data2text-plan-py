@@ -21,12 +21,12 @@ with codecs.open(SRC_FILE, "r", "utf-8") as corpus_file:
 
 outputs = []
 eval_outputs = []
-for i, input in enumerate(inputs):
+for i, input in tqdm(enumerate(inputs)):
     content_plan = content_plans[i]
     output = []
     eval_output = []
     records = set()
-    for record in tqdm(content_plan):
+    for record in content_plan:
         output.append(input[int(record)].encode("utf-8"))
         elements = input[int(record)].split(DELIM)
         if elements[0].isdigit():

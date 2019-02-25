@@ -248,13 +248,24 @@ for line in open(ORACLE_IE_OUTPUT):
         name_exists = set()
         instance_count += 1
         if instance_count >= 1:
-            if len(output) > 0:
+
+            if DATA != 'train':
                 summaries.append(summary)
                 src_instances.append(src_instance)
-                outputs.append(RECORD_DELIM.join(output))
                 trdata_out.append(entry)
+                if len(output) > 0:
+                    outputs.append(RECORD_DELIM.join(output))
+                else:
+                    outputs.append(DELIM.join([UNK_WORD, UNK_WORD, UNK_WORD, UNK_WORD]))
+                    cnt += 1
             else:
-                cnt += 1
+                if len(output) > 0:
+                    summaries.append(summary)
+                    src_instances.append(src_instance)
+                    outputs.append(RECORD_DELIM.join(output))
+                    trdata_out.append(entry)
+                else:
+                    cnt += 1
             output = []
             src_instance = ''
             summary = ''
@@ -386,7 +397,10 @@ for i, x in enumerate(inputs):
     content_plan = content_plans[i]
     output = []
     for record in content_plan:
-        output.append(str(x.index(record)))
+        try:
+            output.append(str(x.index(record)))
+        except ValueError:
+            output.append('0')
     outputs.append(" ".join(output))
 
 output_file = open(CONTENT_PLAN_OUT, 'w')

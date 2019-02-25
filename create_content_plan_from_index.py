@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import sys, codecs
+from tqdm import tqdm
 
 SRC_FILE = sys.argv[1]
 CONTENT_PLAN = sys.argv[2]
@@ -25,7 +26,7 @@ for i, input in enumerate(inputs):
     output = []
     eval_output = []
     records = set()
-    for record in content_plan:
+    for record in tqdm(content_plan):
         output.append(input[int(record)].encode("utf-8"))
         elements = input[int(record)].split(DELIM)
         if elements[0].isdigit():

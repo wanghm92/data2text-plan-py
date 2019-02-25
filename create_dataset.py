@@ -29,6 +29,7 @@ UNK_WORD = '<unk>'
 UNK = 0
 BOS_WORD = '<s>'
 EOS_WORD = '</s>'
+NA = 'N/A'
 
 bs_keys = ["PLAYER-START_POSITION", "PLAYER-MIN", "PLAYER-PTS",
      "PLAYER-FGM", "PLAYER-FGA", "PLAYER-FG_PCT", "PLAYER-FG3M", "PLAYER-FG3A",
@@ -103,16 +104,16 @@ def box_prepro(entry):
     records = []
 
     # pre-pending special tokens, UNK, PAD, SOS, EOS
-    add_special_records(records)
+    # add_special_records(records)
 
     home_players, vis_players = get_player_idxs(entry)
     for ii, player_list in enumerate([home_players, vis_players]):
         for j in xrange(NUM_PLAYERS):
             player_key = player_list[j] if j < len(player_list) else None
-            player_name = entry["box_score"]['PLAYER_NAME'][player_key] if player_key is not None else "N/A"
+            player_name = entry["box_score"]['PLAYER_NAME'][player_key] if player_key is not None else NA
             for k, key in enumerate(bs_keys):
                 rulkey = key.split('-')[1]
-                val = entry["box_score"][rulkey][player_key] if player_key is not None else "N/A"
+                val = entry["box_score"][rulkey][player_key] if player_key is not None else NA
                 record = []
                 record.append(val.replace(" ", "_"))
                 record.append(player_name.replace(" ","_"))
@@ -214,7 +215,9 @@ def create_record(value, name, record_type, homeoraway):
 with codecs.open(JSON, "r", "utf-8") as f:
     trdata = json.load(f)
 
+trdata_out = []
 print "Total number of records: "
+print type(trdata)
 print len(trdata)
 x = trdata[0]
 print x.keys()
@@ -236,6 +239,7 @@ src_instance = ''
 summary = ''
 
 cnt = 0
+dup = 0
 
 # -------------------------- Conversion --------------------------#
 for line in open(ORACLE_IE_OUTPUT):
@@ -245,9 +249,10 @@ for line in open(ORACLE_IE_OUTPUT):
         instance_count += 1
         if instance_count >= 1:
             if len(output) > 0:
-                outputs.append(RECORD_DELIM.join(output))
                 summaries.append(summary)
                 src_instances.append(src_instance)
+                outputs.append(RECORD_DELIM.join(output))
+                trdata_out.append(entry)
             else:
                 cnt += 1
             output = []
@@ -302,7 +307,7 @@ for line in open(ORACLE_IE_OUTPUT):
                 if name not in name_exists:
                     record = create_record(box_score['FIRST_NAME'][player_name_map[name]], name, 'FIRST_NAME', homeoraway)
                     output.append(DELIM.join(record))
-                    if box_score['SECOND_NAME'][player_name_map[name]] != 'N/A':
+                    if box_score['SECOND_NAME'][player_name_map[name]] != NA:
                         record = create_record(box_score['SECOND_NAME'][player_name_map[name]], name, 'SECOND_NAME', homeoraway)
                         output.append(DELIM.join(record))
                 record = create_record(str(value), name, record_type, homeoraway)
@@ -337,14 +342,18 @@ for line in open(ORACLE_IE_OUTPUT):
             if record_added:
                 exists.add((name, record_type, int(value)))
                 name_exists.add(name)
+        else:
+            dup += 1
 
 print(instance_count)
-print cnt
+print("empty content plans: %d")%cnt
+print("duplicated records: %d")%dup
 
 # append last entry
 outputs.append(RECORD_DELIM.join(output))
 summaries.append(summary)
 src_instances.append(src_instance)
+trdata_out.append(entry)
 
 # content plans
 with io.open(INTER_CONTENT_PLAN, 'w', encoding='utf-8') as output_file:
@@ -384,5 +393,9 @@ output_file = open(CONTENT_PLAN_OUT, 'w')
 output_file.write("\n".join(outputs))
 output_file.write("\n")
 output_file.close()
+
+print("saving remaining json items")
+with codecs.open('%s.skimmed.json'%DATA, "w+", "utf-8") as fout:
+    json.dump(trdata_out, fout)
 
 os.chdir(CWD)

@@ -31,8 +31,8 @@ for i, input in enumerate(inputs):
         if elements[0].isdigit():
             record_type = elements[2]
             if not elements[2].startswith('TEAM'):
-                record_type = 'PLAYER-'+ record_type
-            eval_output.append("|".join([elements[1].replace("_"," "), elements[0], record_type]))
+                record_type = 'PLAYER-' + record_type
+            eval_output.append("|".join([elements[1].replace("_", " "), elements[0], record_type]))
     outputs.append(" ".join(output))
     eval_outputs.append("\n".join(eval_output))
 

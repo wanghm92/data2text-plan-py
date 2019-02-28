@@ -103,7 +103,7 @@ def box_prepro(entry):
     # an entry contains 9 items: home_name, box_score, home_city, vis_name, summary, vis_line, vis_city, day, home_line
     records = []
 
-    # pre-pending special tokens, UNK, PAD, SOS, EOS
+    # NOTE: pre-pending special tokens, UNK, PAD, SOS, EOS
     # add_special_records(records)
 
     home_players, vis_players = get_player_idxs(entry)

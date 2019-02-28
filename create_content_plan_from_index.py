@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 SRC_FILE = sys.argv[1]
 CONTENT_PLAN = sys.argv[2]
-EVAL_OUTPUT = sys.argv[3]
+EVAL_OUTPUT = sys.argv[3]  # tuples
 CONTENT_PLAN_INTER = sys.argv[4]
 
 TRAIN = True
@@ -33,17 +33,20 @@ for i, input in tqdm(enumerate(inputs)):
             record_type = elements[2]
             if not elements[2].startswith('TEAM'):
                 record_type = 'PLAYER-' + record_type
-            eval_output.append("|".join([elements[1].replace("_", " "), elements[0], record_type]))
+            # only record digits ??
+            eval_output.append("|".join([elements[1].replace("_", " ").strip('<').strip('>'), elements[0], record_type]))
     outputs.append(" ".join(output))
     eval_outputs.append("\n".join(eval_output))
-
-output_file = open(CONTENT_PLAN_INTER, 'w')
-output_file.write("\n".join(outputs))
-output_file.write("\n")
-output_file.close()
 
 output_file = open(EVAL_OUTPUT, 'w')
 output_file.write("\n")
 output_file.write("\n\n".join(eval_outputs))
 output_file.write("\n")
 output_file.close()
+
+output_file = open(CONTENT_PLAN_INTER, 'w')
+output_file.write("\n".join(outputs))
+output_file.write("\n")
+output_file.close()
+
+

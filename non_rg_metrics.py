@@ -72,14 +72,15 @@ def get_triples(fi):
                 curr = []
             else:
                 pieces = line.strip().split('|')
+                pieces = [pieces[0].lower()] + pieces[1:]
                 curr.append(tuple(pieces))
     if len(curr) > 0:
         all_triples.append(dedup_triples(curr))
     return all_triples
 
 def calc_precrec(goldfi, predfi):
-    gold_triples = get_triples(goldfi)
-    pred_triples = get_triples(predfi)
+    gold_triples = get_triples(goldfi)[1:]
+    pred_triples = get_triples(predfi)[1:]
     total_tp, total_predicted, total_gold = 0, 0, 0
     assert len(gold_triples) == len(pred_triples)
     for i, triplist in enumerate(pred_triples):
@@ -120,8 +121,8 @@ def norm_dld(l1, l2):
     return 1.0-normalized_damerau_levenshtein_distance(s1, s2)
 
 def calc_dld(goldfi, predfi):
-    gold_triples = get_triples(goldfi)
-    pred_triples = get_triples(predfi)
+    gold_triples = get_triples(goldfi)[1:]
+    pred_triples = get_triples(predfi)[1:]
     assert len(gold_triples) == len(pred_triples)
     total_score = 0
     for i, triplist in enumerate(pred_triples):

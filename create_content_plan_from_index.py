@@ -27,7 +27,7 @@ for i, input in tqdm(enumerate(inputs)):
     eval_output = []
     records = set()
     for record in content_plan:
-        output.append(input[int(record)].encode("utf-8"))
+        output.append(input[int(record)])
         elements = input[int(record)].split(DELIM)
         if elements[0].isdigit():
             record_type = elements[2]

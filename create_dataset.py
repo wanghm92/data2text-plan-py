@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from text2num import text2num
 import codecs, json, sys, io, os
-import pdb
 
 # add all records to valid and test
 CWD = os.getcwd()
@@ -11,7 +10,12 @@ print(INPUT_PATH)
 os.chdir(INPUT_PATH)
 
 JSON = "%s.json"%DATA  # input train.json file
-ORACLE_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+if DATA == 'train':
+    ORACLE_IE_OUTPUT = 'roto-original-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+    SKIMMED_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+else:
+    ORACLE_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+
 INTER_CONTENT_PLAN = '%s_content_plan_tks.txt'%DATA  # intermediate content plan input to second stage
 SRC_FILE = 'src_%s.txt'%DATA  # src file input to first stage
 TRAIN_TGT_FILE = "tgt_%s.txt"%DATA  # tgt file of second stage
@@ -71,11 +75,11 @@ def add_special_records(records):
 def get_player_idxs(entry):
     nplayers = 0
     home_players, vis_players = [], []
-    for k, v in entry["box_score"]["PTS"].iteritems():
+    for k, v in entry["box_score"]["PTS"].items():
         nplayers += 1
 
     num_home, num_vis = 0, 0
-    for i in xrange(nplayers):
+    for i in range(nplayers):
         player_city = entry["box_score"]["TEAM_CITY"][str(i)]
         if player_city == entry["home_city"]:
             if len(home_players) < NUM_PLAYERS:
@@ -89,7 +93,7 @@ def get_player_idxs(entry):
     if entry["home_city"] == entry["vis_city"] and entry["home_city"] == "Los Angeles":
         home_players, vis_players = [], []
         num_home, num_vis = 0, 0
-        for i in xrange(nplayers):
+        for i in range(nplayers):
             if len(vis_players) < NUM_PLAYERS:
                 vis_players.append(str(i))
                 num_vis += 1
@@ -108,7 +112,7 @@ def box_prepro(entry):
 
     home_players, vis_players = get_player_idxs(entry)
     for ii, player_list in enumerate([home_players, vis_players]):
-        for j in xrange(NUM_PLAYERS):
+        for j in range(NUM_PLAYERS):
             player_key = player_list[j] if j < len(player_list) else None
             player_name = entry["box_score"]['PLAYER_NAME'][player_key] if player_key is not None else NA
             for k, key in enumerate(bs_keys):
@@ -216,22 +220,24 @@ with codecs.open(JSON, "r", "utf-8") as f:
     trdata = json.load(f)
 
 trdata_out = []
-print "Total number of records: "
-print type(trdata)
-print len(trdata)
+print("Total number of records: ")
+print(type(trdata))
+print(len(trdata))
 x = trdata[0]
-print x.keys()
+print(x.keys())
 for i in x.keys():
-    print i
+    print(i)
     if isinstance(x[i], dict):
         y = x[i]
-        print y.keys()
+        print(y.keys())
 
 output_instances = []
 instance_count = -1 #exclude the first blank line of output
 output = []
-outputs =[]
-exists = set()
+outputs = []
+curr = []
+skimmed_inputs = []
+already_have = set()
 name_exists = set()
 summaries = []
 src_instances = []
@@ -244,7 +250,7 @@ dup = 0
 # -------------------------- Conversion --------------------------#
 for line in open(ORACLE_IE_OUTPUT):
     if len(line.strip()) == 0:
-        exists = set()
+        already_have = set()
         name_exists = set()
         instance_count += 1
         if instance_count >= 1:
@@ -252,7 +258,6 @@ for line in open(ORACLE_IE_OUTPUT):
             if DATA != 'train':
                 summaries.append(summary)
                 src_instances.append(src_instance)
-                trdata_out.append(entry)
                 if len(output) > 0:
                     outputs.append(RECORD_DELIM.join(output))
                 else:
@@ -264,9 +269,11 @@ for line in open(ORACLE_IE_OUTPUT):
                     src_instances.append(src_instance)
                     outputs.append(RECORD_DELIM.join(output))
                     trdata_out.append(entry)
+                    skimmed_inputs.append(curr)
                 else:
                     cnt += 1
             output = []
+            curr = []
             src_instance = ''
             summary = ''
 
@@ -275,11 +282,12 @@ for line in open(ORACLE_IE_OUTPUT):
         src_instance = " ".join(records)
         all_ents, players, teams, cities, total_players, total_teams, total_cities = get_ents(entry)
         box_score = entry["box_score"]
-        player_name_map = {y: x for x, y in box_score['PLAYER_NAME'].iteritems()}
+        player_name_map = {y: x for x, y in box_score['PLAYER_NAME'].items()}
         home_line_score = entry["home_line"]
         vis_line_score = entry["vis_line"]
         summary = entry['summary']
     else:
+        curr.append(line.strip())
         args = line.split("|")
         name = args[0]
         record_type = args[2].strip()
@@ -306,7 +314,7 @@ for line in open(ORACLE_IE_OUTPUT):
             name = resolve_team_name(name, total_teams)
 
         record_added = False
-        if not (name, record_type, int(value)) in exists:
+        if not (name, record_type, int(value)) in already_have:
             if name in player_name_map and record_type in box_score \
                     and box_score[record_type][player_name_map[name]].isdigit() \
                     and int(box_score[record_type][player_name_map[name]]) == int(value):
@@ -351,20 +359,28 @@ for line in open(ORACLE_IE_OUTPUT):
                 output.append(DELIM.join(record))
                 record_added = True
             if record_added:
-                exists.add((name, record_type, int(value)))
+                already_have.add((name, record_type, int(value)))
                 name_exists.add(name)
         else:
             dup += 1
 
-print(instance_count)
-print("empty content plans: %d")%cnt
-print("duplicated records: %d")%dup
+print("content plans: %d"%instance_count+1)
+print("empty content plans: %d"%cnt)
+print("duplicated records: %d"%dup)
 
 # append last entry
-outputs.append(RECORD_DELIM.join(output))
-summaries.append(summary)
-src_instances.append(src_instance)
-trdata_out.append(entry)
+
+if DATA == 'train':
+    if len(output) > 0:
+        outputs.append(RECORD_DELIM.join(output))
+        summaries.append(summary)
+        src_instances.append(src_instance)
+    trdata_out.append(entry)
+    skimmed_inputs.append(curr)
+else:
+    outputs.append(RECORD_DELIM.join(output))
+    summaries.append(summary)
+    src_instances.append(src_instance)
 
 # content plans
 with io.open(INTER_CONTENT_PLAN, 'w', encoding='utf-8') as output_file:
@@ -408,8 +424,26 @@ output_file.write("\n".join(outputs))
 output_file.write("\n")
 output_file.close()
 
-print("saving remaining json items")
-with codecs.open('%s.skimmed.json'%DATA, "w+", "utf-8") as fout:
-    json.dump(trdata_out, fout)
+if len(trdata_out) > 0:
+    print("saving remaining json items")
+    with codecs.open('%s.skimmed.json'%DATA, "w+", "utf-8") as fout:
+        json.dump(trdata_out, fout)
+
+if len(skimmed_inputs) > 0 and DATA == 'train':
+    print(len(skimmed_inputs))
+    flag = True
+    if os.path.isfile(SKIMMED_IE_OUTPUT):
+        message = input('%s already exists, do you want to overwrite? [y/n]:'%SKIMMED_IE_OUTPUT)
+        if message == 'y':
+            flag = True
+        else:
+            flag = False
+
+    if flag:
+        with io.open(SKIMMED_IE_OUTPUT, 'w+', encoding='utf-8') as fout:
+            fout.write("\n")
+            for x in skimmed_inputs:
+                fout.write("\n".join(x))
+                fout.write("\n\n")
 
 os.chdir(CWD)

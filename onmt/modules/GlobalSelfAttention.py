@@ -63,7 +63,7 @@ class GlobalSelfAttention(nn.Module):
         super(GlobalSelfAttention, self).__init__()
 
         self.dim = dim
-        self.attn_type = attn_type
+        self.attn_type = attn_type  # general by default from MeanEncoder
         self.attn_hidden = attn_hidden
         assert (self.attn_type in ["dot", "general", "mlp", "fine"]), (
                 "Please select a valid attention type.")

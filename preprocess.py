@@ -142,32 +142,32 @@ def build_save_dataset(corpus_type, fields, opt):
                 src_corpus, tgt_corpus, src_corpus2, tgt_corpus2, fields,
                 corpus_type, opt, pointers=pointers)
 
-    assert False
+    sys.exit(1)
     # For data_type == 'img' or 'audio', currently we don't do
     # preprocess sharding. We only build a monolithic dataset.
     # But since the interfaces are uniform, it would be not hard
     # to do this should users need this feature.
-    dataset = onmt.io.build_dataset(
-                fields, opt.data_type, src_corpus, tgt_corpus,
-                src_dir=opt.src_dir,
-                src_seq_length=opt.src_seq_length,
-                tgt_seq_length=opt.tgt_seq_length,
-                src_seq_length_trunc=opt.src_seq_length_trunc,
-                tgt_seq_length_trunc=opt.tgt_seq_length_trunc,
-                dynamic_dict=opt.dynamic_dict,
-                sample_rate=opt.sample_rate,
-                window_size=opt.window_size,
-                window_stride=opt.window_stride,
-                window=opt.window)
+    # dataset = onmt.io.build_dataset(
+    #             fields, opt.data_type, src_corpus, tgt_corpus,
+    #             src_dir=opt.src_dir,
+    #             src_seq_length=opt.src_seq_length,
+    #             tgt_seq_length=opt.tgt_seq_length,
+    #             src_seq_length_trunc=opt.src_seq_length_trunc,
+    #             tgt_seq_length_trunc=opt.tgt_seq_length_trunc,
+    #             dynamic_dict=opt.dynamic_dict,
+    #             sample_rate=opt.sample_rate,
+    #             window_size=opt.window_size,
+    #             window_stride=opt.window_stride,
+    #             window=opt.window)
 
     # We save fields in vocab.pt seperately, so make it empty.
-    dataset.fields = []
-
-    pt_file = "{:s}.{:s}.pt".format(opt.save_data, corpus_type)
-    print(" * saving %s dataset to %s." % (corpus_type, pt_file))
-    torch.save(dataset, pt_file)
-
-    return [pt_file]
+    # dataset.fields = []
+    #
+    # pt_file = "{:s}.{:s}.pt".format(opt.save_data, corpus_type)
+    # print(" * saving %s dataset to %s." % (corpus_type, pt_file))
+    # torch.save(dataset, pt_file)
+    #
+    # return [pt_file]
 
 
 def build_save_vocab(train_dataset, fields, opt):

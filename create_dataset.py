@@ -364,7 +364,7 @@ for line in open(ORACLE_IE_OUTPUT):
         else:
             dup += 1
 
-print("content plans: %d"%instance_count+1)
+print("content plans: %d"%(instance_count+1))
 print("empty content plans: %d"%cnt)
 print("duplicated records: %d"%dup)
 

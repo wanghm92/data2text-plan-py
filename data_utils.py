@@ -586,6 +586,10 @@ def make_pointerfi(outfi, inp_file="rotowire/train.json", content_plan_inp="inte
     rulsrcs = box_preproc2(content_plan)
 
     all_ents, players, teams, cities = get_ents(trdata)
+    print("all_ents[:10]: {}".format(list(all_ents)[:10]))
+    print("players[:10]: {}".format(list(players)[:10]))
+    print("teams[:10]: {}".format(list(teams)[:10]))
+    print("cities[:10]: {}".format(list(cities)[:10]))
 
     skipped = 0
     train_links = []
@@ -605,11 +609,16 @@ def make_pointerfi(outfi, inp_file="rotowire/train.json", content_plan_inp="inte
             #tokes = sent.split()
             ents = extract_entities(tokes, all_ents, prons, prev_ents, resolve_prons,
                 players, teams, cities)
+            print("ents: {}".format(ents))
             if resolve_prons:
                 prev_ents.append(ents)
             nums = extract_numbers(tokes)
+            print("nums: {}".format(nums))
+
             # should return a list of (enttup, numtup, rel-name, identifier) for each rel licensed by the table
             rels = get_rels(entry, ents, nums, players, teams, cities)
+            print("rels: {}".format(rels))
+            # sys.exit()
             for (enttup, numtup, label, idthing) in rels:
                 if label != 'NONE':
                     # try to find corresponding words (for both ents and nums)
@@ -835,7 +844,12 @@ def save_coref_task_data(outfile, inp_file="full_newnba_prepdata2.json"):
 #     save_full_sent_data(train_output_fi, multilabel_train=multilabel_train)
 
 
-
+"""
+python data_utils.py 
+    -mode ptrs -input_path $BASE/rotowire/train.json 
+    -train_content_plan $BASE/rotowire/inter/train_content_plan.txt 
+    -output_fi $BASE/rotowire/train-roto-ptrs.txt
+"""
 
 parser = argparse.ArgumentParser(description='Utility Functions')
 parser.add_argument('-input_path', type=str, default="",

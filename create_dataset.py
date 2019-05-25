@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from text2num import text2num
-import codecs, json, sys, io, os
+import codecs, json, sys, io, os, copy
 
 # add all records to valid and test
 CWD = os.getcwd()
@@ -9,7 +9,6 @@ INPUT_PATH = os.path.join("rotowire", DATA)
 print(INPUT_PATH)
 os.chdir(INPUT_PATH)
 
-JSON = "%s.json"%DATA  # input train.json file
 if DATA == 'train':
     ORACLE_IE_OUTPUT = 'roto-original-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
     SKIMMED_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
@@ -176,8 +175,8 @@ def get_ents(thing):
     cities.add(thing["vis_city"])
     players.update(thing["box_score"]["PLAYER_NAME"].values())
     cities.update(thing["box_score"]["TEAM_CITY"].values())
-    total_players = players.copy()
-    total_cities = cities.copy()
+    total_players = copy.deepcopy(players)
+    total_cities = copy.deepcopy(cities)
     for entset in [players, teams, cities]:
         for k in list(entset):
             pieces = k.split()
@@ -200,7 +199,8 @@ def resolve_team_name(name, total_teams):
     for team_name in total_teams:
         if name in team_name.split():
             return team_name
-        elif len(team_name.split())>2 and ((name == " ".join(team_name.split()[1:3])) or (name == " ".join(team_name.split()[0:2]))):
+        elif len(team_name.split())>2 \
+                and ((name == " ".join(team_name.split()[1:3])) or (name == " ".join(team_name.split()[0:2]))):
             return team_name
     return name
 
@@ -216,7 +216,8 @@ def create_record(value, name, record_type, homeoraway):
     return record
 
 # read original json file
-with codecs.open(JSON, "r", "utf-8") as f:
+JSON = "%s.json"%DATA  # input train.json file
+with io.open(JSON, 'r',  encoding='utf-8') as f:
     trdata = json.load(f)
 
 trdata_out = []
@@ -232,201 +233,211 @@ for i in x.keys():
         print(y.keys())
 
 output_instances = []
-instance_count = -1 #exclude the first blank line of output
-output = []
-outputs = []
-curr = []
+instance_count = 0 #exclude the first blank line of this_sample_plan
+content_plan_tks = []
 skimmed_inputs = []
 already_have = set()
 name_exists = set()
 summaries = []
 src_instances = []
+
+this_sample_plan = []
+curr = []
 src_instance = ''
 summary = ''
 
-cnt = 0
+cnt_empty = 0
 dup = 0
 
 # -------------------------- Conversion --------------------------#
-for line in open(ORACLE_IE_OUTPUT):
-    if len(line.strip()) == 0:
-        already_have = set()
-        name_exists = set()
-        instance_count += 1
-        if instance_count >= 1:
+with io.open(ORACLE_IE_OUTPUT, 'r',  encoding='utf-8') as fin:
+    for line in fin.readlines():
+        if len(line.strip()) == 0:
+            already_have = set()
+            name_exists = set()
 
-            if DATA != 'train':
-                summaries.append(summary)
-                src_instances.append(src_instance)
-                if len(output) > 0:
-                    outputs.append(RECORD_DELIM.join(output))
-                else:
-                    outputs.append(DELIM.join([UNK_WORD, UNK_WORD, UNK_WORD, UNK_WORD]))
-                    cnt += 1
-            else:
-                if len(output) > 0:
+            # retain full table for val/test set of content plan is empty
+            if instance_count > 0:
+                if DATA != 'train':
                     summaries.append(summary)
                     src_instances.append(src_instance)
-                    outputs.append(RECORD_DELIM.join(output))
-                    trdata_out.append(entry)
-                    skimmed_inputs.append(curr)
+                    if len(this_sample_plan) > 0:
+                        content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
+                    else:
+                        content_plan_tks.append(DELIM.join([UNK_WORD, UNK_WORD, UNK_WORD, UNK_WORD]))
+                        cnt_empty += 1
+                # discard samples with empty content plan
                 else:
-                    cnt += 1
-            output = []
+                    if len(this_sample_plan) > 0:
+                        summaries.append(summary)
+                        src_instances.append(src_instance)
+                        content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
+                        trdata_out.append(entry)
+                        skimmed_inputs.append(curr)
+                    else:
+                        cnt_empty += 1
+
+            # reset to process the next
+            this_sample_plan = []
             curr = []
             src_instance = ''
             summary = ''
 
-        entry = trdata[instance_count]
-        records, home_players, vis_players = box_prepro(entry)
-        src_instance = " ".join(records)
-        all_ents, players, teams, cities, total_players, total_teams, total_cities = get_ents(entry)
-        box_score = entry["box_score"]
-        player_name_map = {y: x for x, y in box_score['PLAYER_NAME'].items()}
-        home_line_score = entry["home_line"]
-        vis_line_score = entry["vis_line"]
-        summary = entry['summary']
-    else:
-        curr.append(line.strip())
-        args = line.split("|")
-        name = args[0]
-        record_type = args[2].strip()
-        value = args[1]
-        if not value.isdigit():
-            value = text2num(value)
-        if record_type.startswith("PLAYER-"):
-            record_type = record_type[len("PLAYER-"):]
+            # read the next
+            entry = trdata[instance_count]
+            records, home_players, vis_players = box_prepro(entry)
+            src_instance = " ".join(records)
+            all_ents, players, teams, cities, total_players, total_teams, total_cities = get_ents(entry)
+            box_score = entry["box_score"]
+            player_name_map = {y: x for x, y in box_score['PLAYER_NAME'].items()}
+            home_line_score = entry["home_line"]
+            vis_line_score = entry["vis_line"]
+            summary = entry['summary']
+            instance_count += 1
 
-        name = name.replace("UNK", "").strip()
-        if name == 'Los Angeles' and 'LA' in total_cities:
-            name = 'LA'
-        if name in total_players:
-            pass
-        elif name in total_teams:
-            pass
-        elif name in players:
-            name = resolve_name(name, total_players)
-        elif name == 'Los Angeles Clippers' and 'LA Clippers' in total_teams:
-            name = 'LA Clippers'
-        elif name in teams:
-            name = resolve_team_name(name, total_teams)
-        elif name in total_cities:
-            name = resolve_team_name(name, total_teams)
-
-        record_added = False
-        if not (name, record_type, int(value)) in already_have:
-            if name in player_name_map and record_type in box_score \
-                    and box_score[record_type][player_name_map[name]].isdigit() \
-                    and int(box_score[record_type][player_name_map[name]]) == int(value):
-                homeoraway = ""
-                if player_name_map[name] in home_players:
-                    homeoraway = "HOME"
-                elif player_name_map[name] in vis_players:
-                    homeoraway = "AWAY"
-                if name not in name_exists:
-                    record = create_record(box_score['FIRST_NAME'][player_name_map[name]], name, 'FIRST_NAME', homeoraway)
-                    output.append(DELIM.join(record))
-                    if box_score['SECOND_NAME'][player_name_map[name]] != NA:
-                        record = create_record(box_score['SECOND_NAME'][player_name_map[name]], name, 'SECOND_NAME', homeoraway)
-                        output.append(DELIM.join(record))
-                record = create_record(str(value), name, record_type, homeoraway)
-                output.append(DELIM.join(record))
-                record_added = True
-            elif name.endswith(home_line_score['TEAM-NAME']) and int(home_line_score[record_type]) == int(value):
-                if name not in name_exists:
-                    record = create_record(home_line_score['TEAM-CITY'].replace(" ", "_"),
-                                           home_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-CITY", HOME)
-                    output.append(DELIM.join(record))
-
-                    record = create_record(home_line_score['TEAM-NAME'].replace(" ", "_"),
-                                           home_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-NAME", HOME)
-                    output.append(DELIM.join(record))
-
-                record = create_record(str(value), home_line_score['TEAM-NAME'].replace(" ", "_"), record_type, HOME)
-                output.append(DELIM.join(record))
-                record_added = True
-            elif name.endswith(vis_line_score['TEAM-NAME']) and int(vis_line_score[record_type]) == int(value):
-                if name not in name_exists:
-                    record = create_record(vis_line_score['TEAM-CITY'].replace(" ", "_"),
-                                           vis_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-CITY", AWAY)
-                    output.append(DELIM.join(record))
-
-                    record = create_record(vis_line_score['TEAM-NAME'].replace(" ", "_"),
-                                           vis_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-NAME", AWAY)
-                    output.append(DELIM.join(record))
-
-                record = create_record(str(value), vis_line_score['TEAM-NAME'].replace(" ", "_"), record_type, AWAY)
-                output.append(DELIM.join(record))
-                record_added = True
-            if record_added:
-                already_have.add((name, record_type, int(value)))
-                name_exists.add(name)
         else:
-            dup += 1
+            curr.append(line.strip())
+            args = line.split("|")
+            name = args[0]
+            record_type = args[2].strip()
+            value = args[1]
+            if not value.isdigit():
+                value = text2num(value)
+            else:
+                value = int(value)
+            if record_type.startswith("PLAYER-"):
+                record_type = record_type[len("PLAYER-"):]
 
-print("content plans: %d"%(instance_count+1))
-print("empty content plans: %d"%cnt)
+            name = name.replace("UNK", "").strip()
+            if name == 'Los Angeles' and 'LA' in total_cities:
+                name = 'LA'
+            if name in total_players:
+                pass
+            elif name in total_teams:
+                pass
+            elif name in players:
+                name = resolve_name(name, total_players)
+            elif name == 'Los Angeles Clippers' and 'LA Clippers' in total_teams:
+                name = 'LA Clippers'
+            elif name in teams:
+                name = resolve_team_name(name, total_teams)
+            elif name in total_cities:
+                name = resolve_team_name(name, total_teams)
+
+            record_added = False
+            if not (name, record_type, value) in already_have:
+                if name in player_name_map and record_type in box_score \
+                        and box_score[record_type][player_name_map[name]].isdigit() \
+                        and int(box_score[record_type][player_name_map[name]]) == value:
+                    homeoraway = ""
+                    if player_name_map[name] in home_players:
+                        homeoraway = "HOME"
+                    elif player_name_map[name] in vis_players:
+                        homeoraway = "AWAY"
+                    if name not in name_exists:
+                        record = create_record(box_score['FIRST_NAME'][player_name_map[name]], name, 'FIRST_NAME', homeoraway)
+                        this_sample_plan.append(DELIM.join(record))
+                        if box_score['SECOND_NAME'][player_name_map[name]] != NA:
+                            record = create_record(box_score['SECOND_NAME'][player_name_map[name]], name, 'SECOND_NAME', homeoraway)
+                            this_sample_plan.append(DELIM.join(record))
+                    record = create_record(str(value), name, record_type, homeoraway)
+                    this_sample_plan.append(DELIM.join(record))
+                    record_added = True
+                elif name.endswith(home_line_score['TEAM-NAME']) and int(home_line_score[record_type]) == value:
+                    if name not in name_exists:
+                        record = create_record(home_line_score['TEAM-CITY'].replace(" ", "_"),
+                                               home_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-CITY", HOME)
+                        this_sample_plan.append(DELIM.join(record))
+
+                        record = create_record(home_line_score['TEAM-NAME'].replace(" ", "_"),
+                                               home_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-NAME", HOME)
+                        this_sample_plan.append(DELIM.join(record))
+
+                    record = create_record(str(value), home_line_score['TEAM-NAME'].replace(" ", "_"), record_type, HOME)
+                    this_sample_plan.append(DELIM.join(record))
+                    record_added = True
+                elif name.endswith(vis_line_score['TEAM-NAME']) and int(vis_line_score[record_type]) == value:
+                    if name not in name_exists:
+                        record = create_record(vis_line_score['TEAM-CITY'].replace(" ", "_"),
+                                               vis_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-CITY", AWAY)
+                        this_sample_plan.append(DELIM.join(record))
+
+                        record = create_record(vis_line_score['TEAM-NAME'].replace(" ", "_"),
+                                               vis_line_score['TEAM-NAME'].replace(" ", "_"), "TEAM-NAME", AWAY)
+                        this_sample_plan.append(DELIM.join(record))
+
+                    record = create_record(str(value), vis_line_score['TEAM-NAME'].replace(" ", "_"), record_type, AWAY)
+                    this_sample_plan.append(DELIM.join(record))
+                    record_added = True
+                if record_added:
+                    already_have.add((name, record_type, value))
+                    name_exists.add(name)
+            else:
+                dup += 1
+
+print("content plans: %d"%(instance_count))
+print("empty content plans: %d"%cnt_empty)
 print("duplicated records: %d"%dup)
 
 # append last entry
-
 if DATA == 'train':
-    if len(output) > 0:
-        outputs.append(RECORD_DELIM.join(output))
+    if len(this_sample_plan) > 0:
+        content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
         summaries.append(summary)
         src_instances.append(src_instance)
-    trdata_out.append(entry)
-    skimmed_inputs.append(curr)
+        trdata_out.append(entry)
+        skimmed_inputs.append(curr)
 else:
-    outputs.append(RECORD_DELIM.join(output))
+    content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
     summaries.append(summary)
     src_instances.append(src_instance)
 
 # content plans
-with io.open(INTER_CONTENT_PLAN, 'w', encoding='utf-8') as output_file:
-    for output in outputs:
-        output_file.write("%s\n" % output)
+with io.open(INTER_CONTENT_PLAN, 'w', encoding='utf-8') as fout:
+    for plan in content_plan_tks:
+        fout.write("%s\n" % plan)
 
-# output summary
-with io.open(TRAIN_TGT_FILE, 'w', encoding='utf-8') as summary_file:
+# save summary
+with io.open(TRAIN_TGT_FILE, 'w', encoding='utf-8') as fout:
     for summary in summaries:
         # summary = [word.encode("utf-8") for word in summary]
-        summary_file.write("%s\n" % " ".join(summary))
+        fout.write("%s\n" % " ".join(summary))
 
 # all input records
-with io.open(SRC_FILE, 'w', encoding='utf-8') as src_file:
+with io.open(SRC_FILE, 'w', encoding='utf-8') as fout:
     for src_instance in src_instances:
-        src_file.write("%s\n" % src_instance)
+        fout.write("%s\n" % src_instance)
         # src_file.write("\n")
 
+# indexing content plans
 inputs = []
 content_plans = []
-with codecs.open(INTER_CONTENT_PLAN, "r", "utf-8") as corpus_file:
-    for i, line in enumerate(corpus_file):
+with io.open(INTER_CONTENT_PLAN, 'r',  encoding='utf-8') as fin:
+    for i, line in enumerate(fin):
         content_plans.append(line.split())
-with codecs.open(SRC_FILE, "r", "utf-8") as corpus_file:
-    for i, line in enumerate(corpus_file):
+with io.open(SRC_FILE, 'r',  encoding='utf-8') as fin:
+    for i, line in enumerate(fin):
         inputs.append(line.split())
 
-outputs = []
+content_plan_ids = []
 for i, x in enumerate(inputs):
-    content_plan = content_plans[i]
-    output = []
-    for record in content_plan:
+    plan = content_plans[i]
+    ids = []
+    for record in plan:
         try:
-            output.append(str(x.index(record)))
+            ids.append(str(x.index(record)))
         except ValueError:
-            output.append('0')
-    outputs.append(" ".join(output))
+            ids.append('0')
+    content_plan_ids.append(" ".join(ids))
 
-output_file = open(CONTENT_PLAN_OUT, 'w')
-output_file.write("\n".join(outputs))
-output_file.write("\n")
-output_file.close()
+with io.open(CONTENT_PLAN_OUT, 'w', encoding='utf-8') as fout:
+    fout.write("\n".join(content_plan_ids))
+    fout.write("\n")
 
+# training samples with empty content plans are discarded
 if len(trdata_out) > 0:
     print("saving remaining json items")
-    with codecs.open('%s.skimmed.json'%DATA, "w+", "utf-8") as fout:
+    with io.open('%s.skimmed.json'%DATA, 'w+', encoding='utf-8') as fout:
         json.dump(trdata_out, fout)
 
 if len(skimmed_inputs) > 0 and DATA == 'train':

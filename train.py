@@ -20,6 +20,10 @@ import onmt.modules
 from onmt.Utils import use_gpu
 import opts
 
+"""
+TODO:
+(1) add summary
+"""
 
 parser = argparse.ArgumentParser(
     description='train.py',
@@ -77,7 +81,7 @@ if opt.tensorboard:
 
 
 def report_func(epoch, batch, num_batches,
-                start_time, lr, report_stats):
+                start_time, lr, report_stats, suffix='1'):
     """
     This is the user-defined batch-level traing progress
     report function.
@@ -99,7 +103,8 @@ def report_func(epoch, batch, num_batches,
         if opt.tensorboard:
             # Log the progress using the number of batches on the x-axis.
             report_stats.log_tensorboard(
-                "progress", writer, lr, epoch * num_batches + batch)
+                "progress_{}".format(suffix), writer, lr, epoch * num_batches + batch)
+        # reset report_stats
         report_stats = onmt.Statistics()
 
     return report_stats
@@ -274,8 +279,10 @@ def train_model(model, model2, fields, optim, optim2, data_type, model_opt):
             train_stats.log("train", experiment, optim.lr)
             valid_stats.log("valid", experiment, optim.lr)
         if opt.tensorboard:
-            train_stats.log_tensorboard("train", writer, optim.lr, epoch)
-            train_stats.log_tensorboard("valid", writer, optim.lr, epoch)
+            train_stats.log_tensorboard("train_1", writer, optim.lr, epoch)
+            train_stats2.log_tensorboard("train_2", writer, optim.lr, epoch)
+            valid_stats.log_tensorboard("valid_1", writer, optim.lr, epoch)
+            valid_stats2.log_tensorboard("valid_2", writer, optim.lr, epoch)
 
         # 4. Update the learning rate
         trainer.epoch_step(valid_stats.ppl(), valid_stats2.ppl(), epoch)
@@ -408,6 +415,8 @@ def build_optim(model, checkpoint):
 
 
 def main():
+    from pprint import pprint
+    pprint(vars(opt))
     print('Experiment 22-4.4 using attn_dim of 64')
     # Load checkpoint if we resume from a previous training.
     if opt.train_from:
@@ -431,18 +440,17 @@ def main():
 
     # Report src/tgt features.
     collect_report_features(fields)
-
-    # Build model.
+    # NOTE: build model.
     model1, model2 = build_model(model_opt, opt, fields, checkpoint)
     tally_parameters(model1)
     tally_parameters(model2)
     check_save_model_path()
 
-    # Build optimizer.
+    # NOTE: Build optimizer.
     optim1 = build_optim(model1, checkpoint)
     optim2 = build_optim(model2, checkpoint)
 
-    # Do training.
+    # NOTE: Do training.
     train_model(model1, model2, fields, optim1, optim2, data_type, model_opt)
 
     # If using tensorboard for logging, close the writer after training.

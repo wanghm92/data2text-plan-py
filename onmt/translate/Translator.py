@@ -117,7 +117,7 @@ class Translator(object):
         if not stage1:
             if data_type == 'text':
                 _, src_lengths = batch.src2
-            inp_stage2 = batch.tgt1_planning.unsqueeze(2)[1:-1]
+            inp_stage2 = batch.tgt1_planning.unsqueeze(2)[1:-1]  # remove <sos> and <eos> tokens
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
                             zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)

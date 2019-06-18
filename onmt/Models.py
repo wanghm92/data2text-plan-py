@@ -89,7 +89,7 @@ class MeanEncoder(EncoderBase):
         "See :obj:`EncoderBase.forward()`"
         self._check_args(src, lengths, encoder_state)
 
-        emb = self.dropout(self.embeddings(src))
+        emb = self.dropout(self.embeddings(src))  # src: word/feature ids
         s_len, batch, emb_dim = emb.size()
         decoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 

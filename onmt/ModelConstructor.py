@@ -173,6 +173,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
 
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
+    # NOTE: make decoder
     decoder = make_decoder(model_opt, tgt_embeddings, stage1)
 
     # Make NMTModel(= encoder + decoder).
@@ -187,6 +188,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
         if model_opt.share_decoder_embeddings:
             generator[0].weight = decoder.embeddings.word_lut.weight
     else:
+        # NOTE: CopyGenerator
         generator = CopyGenerator(model_opt.rnn_size,
                                   fields["tgt2"].vocab)
 

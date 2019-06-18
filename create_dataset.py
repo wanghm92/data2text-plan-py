@@ -256,7 +256,6 @@ with io.open(ORACLE_IE_OUTPUT, 'r',  encoding='utf-8') as fin:
             already_have = set()
             name_exists = set()
 
-            # retain full table for val/test set of content plan is empty
             if instance_count > 0:
                 if DATA != 'train':
                     summaries.append(summary)
@@ -264,9 +263,10 @@ with io.open(ORACLE_IE_OUTPUT, 'r',  encoding='utf-8') as fin:
                     if len(this_sample_plan) > 0:
                         content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
                     else:
-                        content_plan_tks.append(DELIM.join([UNK_WORD, UNK_WORD, UNK_WORD, UNK_WORD]))
+                        # use UNK for val/test set of content plan if empty
+                        content_plan_tks.append(DELIM.join([EOS_WORD, EOS_WORD, EOS_WORD, EOS_WORD]))
                         cnt_empty += 1
-                # discard samples with empty content plan
+
                 else:
                     if len(this_sample_plan) > 0:
                         summaries.append(summary)
@@ -274,6 +274,7 @@ with io.open(ORACLE_IE_OUTPUT, 'r',  encoding='utf-8') as fin:
                         content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
                         trdata_out.append(entry)
                         skimmed_inputs.append(curr)
+                    # discard samples with empty content plan
                     else:
                         cnt_empty += 1
 

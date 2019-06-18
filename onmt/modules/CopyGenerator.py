@@ -6,7 +6,9 @@ import torch.cuda
 import onmt
 import onmt.io
 from onmt.Utils import aeq
-
+import sys
+import numpy
+numpy.set_printoptions(threshold=sys.maxsize)
 
 class CopyGenerator(nn.Module):
     """Generator module that additionally considers copying
@@ -79,6 +81,11 @@ class CopyGenerator(nn.Module):
              `[src_len, batch, extra_words]`
         """
         # CHECKS
+        # print("[CopyGenerator] src_map = {}".format(src_map[:, 0, :]))
+        # print("[CopyGenerator] align = {}".format(align.cpu().data.numpy()))
+        # print("[CopyGenerator] ptrs = {}".format(ptrs[:, 0, :]))
+        # print("[CopyGenerator] attn = {}".format(attn))
+
         batch_by_tlen, _ = hidden.size()
         batch_by_tlen_, slen = attn.size()
         slen_, batch, cvocab = src_map.size()
@@ -89,6 +96,7 @@ class CopyGenerator(nn.Module):
         logits = self.linear(hidden)
         logits[:, self.tgt_dict.stoi[onmt.io.PAD_WORD]] = -float('inf')
         prob = F.softmax(logits)
+        # print("[CopyGenerator] prob = {}".format(prob))
 
         # Probability of copying p(z=1) batch.
         p_copy = F.sigmoid(self.linear_copy(hidden))
@@ -118,6 +126,9 @@ class CopyGeneratorCriterion(object):
         self.pad = pad
 
     def __call__(self, scores, align, target):
+        # print("[CopyGeneratorCriterion] scores = {}".format(scores))
+        # print("[CopyGeneratorCriterion] align = {}".format(align))
+        # print("[CopyGeneratorCriterion] target = {}".format(target))
         # Compute unks in align and target for readability
         align_unk = align.eq(0).float()
         align_not_unk = align.ne(0).float()
@@ -163,7 +174,7 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         self.normalize_by_length = normalize_by_length
         self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy,
                                                 self.padding_idx)
-        self.switch_loss_criterion = nn.BCELoss(size_average=False)
+        self.switch_loss_criterion = nn.BCELoss(size_average=False)  # the losses are summed for each minibatch
 
     def _make_shard_state(self, batch, output, range_, attns):
         """ See base class for args description. """
@@ -227,5 +238,5 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         else:
             loss = loss.sum()
 
-        loss = loss + switch_loss
+        loss = loss + switch_loss  # summed over all samples for each minibatch
         return loss, stats

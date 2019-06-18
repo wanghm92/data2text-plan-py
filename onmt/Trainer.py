@@ -80,6 +80,7 @@ class Statistics(object):
     def log_tensorboard(self, prefix, writer, lr, epoch):
         t = self.elapsed_time()
         writer.add_scalar(prefix + "/ppl", self.ppl(), epoch)
+        writer.add_scalar(prefix + "/loss", self.loss, epoch)
         writer.add_scalar(prefix + "/accuracy", self.accuracy(), epoch)
         writer.add_scalar(prefix + "/tgtper",  self.n_words / t, epoch)
         writer.add_scalar(prefix + "/lr", lr, epoch)
@@ -180,6 +181,7 @@ class Trainer(object):
                         true_batchs, total_stats,
                         report_stats, total_stats2, report_stats2, normalization)
 
+                # write to tensorboard every batch
                 if report_func is not None:
                     report_stats = report_func(
                             epoch, idx, num_batches,
@@ -188,7 +190,7 @@ class Trainer(object):
                     report_stats2 = report_func(
                             epoch, idx, num_batches,
                             total_stats2.start_time, self.optim2.lr,
-                            report_stats2)
+                            report_stats2, suffix='2')
 
                 true_batchs = []
                 accum = 0
@@ -197,8 +199,10 @@ class Trainer(object):
 
         if len(true_batchs) > 0:
             self._gradient_accumulation(
-                    true_batchs, total_stats,
-                    report_stats, total_stats2, report_stats2, normalization)
+                    true_batchs,
+                    total_stats, report_stats,
+                    total_stats2, report_stats2,
+                    normalization)
             true_batchs = []
 
         return total_stats, total_stats2
@@ -316,8 +320,7 @@ class Trainer(object):
                    % (opt.save_model, valid_stats2.accuracy(),
                       valid_stats2.ppl(), epoch))
 
-    def _gradient_accumulation(self, true_batchs, total_stats,
-                               report_stats, total_stats2, report_stats2, normalization):
+    def _gradient_accumulation(self, true_batchs, total_stats, report_stats, total_stats2, report_stats2, normalization):
         if self.grad_accum_count > 1:
             assert False
             self.model.zero_grad()

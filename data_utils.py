@@ -9,7 +9,7 @@ import random
 import math
 from text2num import text2num, NumberException
 import argparse
-
+from tqdm import tqdm
 random.seed(2)
 
 
@@ -580,20 +580,22 @@ def make_pointerfi(outfi, inp_file="rotowire/train.json", content_plan_inp="inte
     with codecs.open(inp_file, "r", "utf-8") as f:
         trdata = json.load(f)
 
+    print(len(trdata))
     with codecs.open(content_plan_inp, "r", "utf-8") as f:
         content_plan = f.readlines()
     content_plan = [[record.replace(u"￨","|") for record in x.strip().split()] for x in content_plan]
+    print(len(content_plan))
     rulsrcs = box_preproc2(content_plan)
 
     all_ents, players, teams, cities = get_ents(trdata)
-    print("all_ents[:10]: {}".format(list(all_ents)[:10]))
-    print("players[:10]: {}".format(list(players)[:10]))
-    print("teams[:10]: {}".format(list(teams)[:10]))
-    print("cities[:10]: {}".format(list(cities)[:10]))
+    # print("all_ents[:10]: {}".format(list(all_ents)[:10]))
+    # print("players[:10]: {}".format(list(players)[:10]))
+    # print("teams[:10]: {}".format(list(teams)[:10]))
+    # print("cities[:10]: {}".format(list(cities)[:10]))
 
     skipped = 0
     train_links = []
-    for i, entry in enumerate(trdata):
+    for i, entry in tqdm(enumerate(trdata)):
         content_plan_entry = [content_plan_record for content_plan_record in content_plan[i]]
         content_plan_values = rulsrcs[i]
         home_players, vis_players = get_player_idxs(entry)
@@ -609,15 +611,15 @@ def make_pointerfi(outfi, inp_file="rotowire/train.json", content_plan_inp="inte
             #tokes = sent.split()
             ents = extract_entities(tokes, all_ents, prons, prev_ents, resolve_prons,
                 players, teams, cities)
-            print("ents: {}".format(ents))
+            # print("ents: {}".format(ents))
             if resolve_prons:
                 prev_ents.append(ents)
             nums = extract_numbers(tokes)
-            print("nums: {}".format(nums))
+            # print("nums: {}".format(nums))
 
             # should return a list of (enttup, numtup, rel-name, identifier) for each rel licensed by the table
             rels = get_rels(entry, ents, nums, players, teams, cities)
-            print("rels: {}".format(rels))
+            # print("rels: {}".format(rels))
             # sys.exit()
             for (enttup, numtup, label, idthing) in rels:
                 if label != 'NONE':

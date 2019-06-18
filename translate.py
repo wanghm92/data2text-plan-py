@@ -15,7 +15,7 @@ import onmt
 import onmt.ModelConstructor
 import onmt.modules
 import opts
-
+from tqdm import tqdm
 parser = argparse.ArgumentParser(
     description='translate.py',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -129,7 +129,7 @@ def main():
     pred_score_total, pred_words_total = 0, 0
     gold_score_total, gold_words_total = 0, 0
     stage1 = opt.stage1
-    for batch in data_iter:
+    for batch in tqdm(data_iter):
         batch_data = translator.translate_batch(batch, data, stage1)
         translations = builder.from_batch(batch_data, stage1)
 

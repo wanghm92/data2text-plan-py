@@ -84,6 +84,8 @@ def calc_precrec(goldfi, predfi):
     gold_triples = get_triples(goldfi)[1:]
     pred_triples = get_triples(predfi)[1:]
     total_tp, total_predicted, total_gold = 0, 0, 0
+    print(len(gold_triples))
+    print(len(pred_triples))
     assert len(gold_triples) == len(pred_triples)
     for i, triplist in enumerate(pred_triples):
         tp = sum((1 for j in range(len(triplist))
@@ -94,8 +96,9 @@ def calc_precrec(goldfi, predfi):
         total_gold += len(gold_triples[i])
     avg_prec = float(total_tp)/total_predicted
     avg_rec = float(total_tp)/total_gold
+    f1 = 2*avg_prec*avg_rec/(avg_prec+avg_rec)
     print("totals:", total_tp, total_predicted, total_gold)
-    print("prec:", avg_prec, "rec:", avg_rec)
+    print("prec:", avg_prec, "rec:", avg_rec, "f1:", f1)
     return avg_prec, avg_rec
 
 def norm_dld(l1, l2):

@@ -139,9 +139,9 @@ def extract_numbers(sent):
         if a_number:
             sent_nums.append((i, i+1, int(toke)))
             i += 1
-        elif toke in number_words and not annoying_number_word(sent, i): # get longest span  (this is kind of stupid)
+        elif toke in number_words and annoying_number_word(sent, i): # get longest span  (this is kind of stupid)
             j = 1
-            while i+j < len(sent) and sent[i+j] in number_words and not annoying_number_word(sent, i+j):
+            while i+j < len(sent) and sent[i+j] in number_words and annoying_number_word(sent, i+j):
                 j += 1
             try:
                 sent_nums.append((i, i+j, text2num(" ".join(sent[i:i+j]))))
@@ -472,6 +472,9 @@ def prep_generated_data(genfile, dict_pfx, outfile, path="../boxscore-data/rotow
     valfi = "test.json" if test else "valid.json"
     with codecs.open(os.path.join(path, valfi), "r", "utf-8") as f:
         valdata = json.load(f)
+
+    print(len(valdata))
+    print(len(gens))
 
     assert len(valdata) == len(gens)
 

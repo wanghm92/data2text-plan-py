@@ -38,11 +38,11 @@ for i, input in tqdm(enumerate(inputs)):
     outputs.append(" ".join(output))
     eval_outputs.append("\n".join(eval_output))
 
-output_file = codecs.open(EVAL_OUTPUT, 'w', "utf-8")
-output_file.write("\n")
-output_file.write("\n\n".join(eval_outputs))
-output_file.write("\n")
-output_file.close()
+# output_file = codecs.open(EVAL_OUTPUT, 'w', "utf-8")
+# output_file.write("\n")
+# output_file.write("\n\n".join(eval_outputs))
+# output_file.write("\n")
+# output_file.close()
 
 output_file = codecs.open(CONTENT_PLAN_INTER, 'w', "utf-8")
 output_file.write("\n".join(outputs))

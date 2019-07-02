@@ -5,15 +5,16 @@ import codecs, json, sys, io, os, copy
 # add all records to valid and test
 CWD = os.getcwd()
 DATA = sys.argv[1]
-INPUT_PATH = os.path.join("rotowire", DATA)
+INPUT_PATH = os.path.join("rotowire_temp", DATA)
 print(INPUT_PATH)
 os.chdir(INPUT_PATH)
 
-if DATA == 'train':
-    ORACLE_IE_OUTPUT = 'roto-original-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
-    SKIMMED_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
-else:
-    ORACLE_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+# if DATA == 'train':
+#     ORACLE_IE_OUTPUT = 'roto-original-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+#     SKIMMED_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+# else:
+ORACLE_IE_OUTPUT = 'roto-gold-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
+SKIMMED_IE_OUTPUT = 'roto-skimmed-%s.h5-tuples.txt'%DATA  # oracle content plan obtained from IE tool
 
 INTER_CONTENT_PLAN = '%s_content_plan_tks.txt'%DATA  # intermediate content plan input to second stage
 SRC_FILE = 'src_%s.txt'%DATA  # src file input to first stage
@@ -257,26 +258,26 @@ with io.open(ORACLE_IE_OUTPUT, 'r',  encoding='utf-8') as fin:
             name_exists = set()
 
             if instance_count > 0:
-                if DATA != 'train':
+                # if DATA != 'train':
+                #     summaries.append(summary)
+                #     src_instances.append(src_instance)
+                #     if len(this_sample_plan) > 0:
+                #         content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
+                #     else:
+                #         # use UNK for val/test set of content plan if empty
+                #         content_plan_tks.append(DELIM.join([EOS_WORD, EOS_WORD, EOS_WORD, EOS_WORD]))
+                #         cnt_empty += 1
+                #
+                # else:
+                if len(this_sample_plan) > 0:
                     summaries.append(summary)
                     src_instances.append(src_instance)
-                    if len(this_sample_plan) > 0:
-                        content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
-                    else:
-                        # use UNK for val/test set of content plan if empty
-                        content_plan_tks.append(DELIM.join([EOS_WORD, EOS_WORD, EOS_WORD, EOS_WORD]))
-                        cnt_empty += 1
-
+                    content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
+                    trdata_out.append(entry)
+                    skimmed_inputs.append(curr)
+                # discard samples with empty content plan
                 else:
-                    if len(this_sample_plan) > 0:
-                        summaries.append(summary)
-                        src_instances.append(src_instance)
-                        content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
-                        trdata_out.append(entry)
-                        skimmed_inputs.append(curr)
-                    # discard samples with empty content plan
-                    else:
-                        cnt_empty += 1
+                    cnt_empty += 1
 
             # reset to process the next
             this_sample_plan = []
@@ -381,17 +382,17 @@ print("empty content plans: %d"%cnt_empty)
 print("duplicated records: %d"%dup)
 
 # append last entry
-if DATA == 'train':
-    if len(this_sample_plan) > 0:
-        content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
-        summaries.append(summary)
-        src_instances.append(src_instance)
-        trdata_out.append(entry)
-        skimmed_inputs.append(curr)
-else:
+# if DATA == 'train':
+if len(this_sample_plan) > 0:
     content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
     summaries.append(summary)
     src_instances.append(src_instance)
+    trdata_out.append(entry)
+    skimmed_inputs.append(curr)
+# else:
+#     content_plan_tks.append(RECORD_DELIM.join(this_sample_plan))
+#     summaries.append(summary)
+#     src_instances.append(src_instance)
 
 # content plans
 with io.open(INTER_CONTENT_PLAN, 'w', encoding='utf-8') as fout:
@@ -441,7 +442,7 @@ if len(trdata_out) > 0:
     with io.open('%s.skimmed.json'%DATA, 'w+', encoding='utf-8') as fout:
         json.dump(trdata_out, fout)
 
-if len(skimmed_inputs) > 0 and DATA == 'train':
+if len(skimmed_inputs) > 0:  # and DATA == 'train':
     print(len(skimmed_inputs))
     flag = True
     if os.path.isfile(SKIMMED_IE_OUTPUT):

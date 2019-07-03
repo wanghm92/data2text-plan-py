@@ -110,6 +110,8 @@ class Translator(object):
         src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
 
         enc_states, memory_bank = self.model.encoder(src, src_lengths)
+        if isinstance(memory_bank, tuple):
+            memory_bank, _ = memory_bank
         src_lengths = torch.Tensor(batch_size).type_as(memory_bank.data) \
             .long() \
             .fill_(memory_bank.size(0))
@@ -172,9 +174,7 @@ class Translator(object):
                     # beam x tgt_vocab
                     beam_attn = unbottle(attn["std"])
             else:
-                out = model.generator.forward(dec_out,
-                                                   attn["copy"].squeeze(0),
-                                                   src_map)
+                out = model.generator.forward(dec_out, attn["copy"].squeeze(0), src_map)
                 # beam x (tgt_vocab + extra_vocab)
                 out = data.collapse_copy_scores(
                     unbottle(out[0].data),

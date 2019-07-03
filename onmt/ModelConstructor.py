@@ -16,8 +16,7 @@ from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
                          CNNEncoder, CNNDecoder, AudioEncoder
 from onmt.Utils import use_gpu
 
-
-def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
+def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_word=False):
     """
     Make an Embeddings instance.
     Args:
@@ -48,7 +47,8 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True):
                       word_padding_idx=word_padding_idx,
                       feat_padding_idx=feats_padding_idx,
                       word_vocab_size=num_word_embeddings,
-                      feat_vocab_sizes=num_feat_embeddings)
+                      feat_vocab_sizes=num_feat_embeddings,
+                      discard_word=discard_word)
 
 
 def make_encoder(opt, embeddings, stage1=True):
@@ -59,9 +59,11 @@ def make_encoder(opt, embeddings, stage1=True):
         embeddings (Embeddings): vocab embeddings for this encoder.
         stage1: stage1 encoder
     """
-
+    table_embeddings = None
+    if isinstance(embeddings, tuple):
+        embeddings, table_embeddings = embeddings
     if stage1:
-        return MeanEncoder(opt.enc_layers1, embeddings, opt.src_word_vec_size, opt.attn_hidden, opt.dropout)
+        return MeanEncoder(opt.enc_layers1, (embeddings, table_embeddings), opt.src_word_vec_size, opt.attn_hidden, opt.dropout)
     else:
         # "rnn" or "brnn"
         return RNNEncoder(opt.rnn_type, opt.brnn2, opt.enc_layers2,
@@ -142,9 +144,18 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     if model_opt.model_type == "text":
         src_dict = fields[src].vocab
         feature_dicts = onmt.io.collect_feature_vocabs(fields, src)
-        src_embeddings = make_embeddings(model_opt, src_dict,
-                                         feature_dicts)
-        encoder = make_encoder(model_opt, src_embeddings, stage1)
+        src_embeddings = make_embeddings(model_opt, src_dict, feature_dicts)
+
+        table_embeddings = make_embeddings(model_opt, src_dict, feature_dicts, discard_word=True)
+        # reusing the same embedding weights
+        print(table_embeddings.make_embedding[0])
+        table_embeddings.word_lut.weight = src_embeddings.word_lut.weight
+        table_embeddings.field_lut.weight = src_embeddings.field_lut.weight
+        table_embeddings.type_lut.weight = src_embeddings.type_lut.weight
+        table_embeddings.ha_lut.weight = src_embeddings.ha_lut.weight
+
+        encoder = make_encoder(model_opt, (src_embeddings, table_embeddings), stage1)
+
     elif model_opt.model_type == "img":
         encoder = ImageEncoder(model_opt.enc_layers,
                                model_opt.brnn,

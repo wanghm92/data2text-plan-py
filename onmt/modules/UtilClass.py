@@ -33,15 +33,18 @@ class Elementwise(nn.ModuleList):
     single Variable.
     """
 
-    def __init__(self, merge=None, *args):
+    def __init__(self, discard_word=False, merge=None, *args):
         assert merge in [None, 'first', 'concat', 'sum', 'mlp']
         self.merge = merge
+        self.discard_word = discard_word
         super(Elementwise, self).__init__(*args)
 
     def forward(self, input):
         inputs = [feat.squeeze(2) for feat in input.split(1, dim=2)]
         assert len(self) == len(inputs)
         outputs = [f(x) for f, x in zip(self, inputs)]
+        if self.discard_word:
+            outputs = outputs[1:]
         if self.merge == 'first':
             return outputs[0]
         elif self.merge == 'concat' or self.merge == 'mlp':

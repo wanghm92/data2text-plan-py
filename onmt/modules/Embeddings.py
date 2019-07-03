@@ -90,7 +90,8 @@ class Embeddings(nn.Module):
                  feat_vec_exponent=0.7, feat_vec_size=-1,
                  feat_padding_idx=[],
                  feat_vocab_sizes=[],
-                 dropout=0):
+                 dropout=0,
+                 discard_word=False):
 
         self.word_padding_idx = word_padding_idx
 
@@ -117,7 +118,7 @@ class Embeddings(nn.Module):
         emb_params = zip(vocab_sizes, emb_dims, pad_indices)
         embeddings = [nn.Embedding(vocab, dim, padding_idx=pad)
                       for vocab, dim, pad in emb_params]
-        emb_luts = Elementwise(feat_merge, embeddings)
+        emb_luts = Elementwise(discard_word, feat_merge, embeddings)
 
         # The final output size of word + feature vectors. This can vary
         # from the word vector size if and only if features are defined.
@@ -137,6 +138,8 @@ class Embeddings(nn.Module):
 
         if feat_merge == 'mlp' and len(feat_vocab_sizes)>0:
             in_dim = sum(emb_dims)
+            if discard_word:
+                in_dim -= word_vec_size
             out_dim = word_vec_size
             mlp = nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU())
             self.make_embedding.add_module('mlp', mlp)
@@ -148,6 +151,18 @@ class Embeddings(nn.Module):
     @property
     def word_lut(self):
         return self.make_embedding[0][0]
+
+    @property
+    def field_lut(self):
+        return self.make_embedding[0][1]
+
+    @property
+    def type_lut(self):
+        return self.make_embedding[0][2]
+
+    @property
+    def ha_lut(self):
+        return self.make_embedding[0][3]
 
     @property
     def emb_luts(self):

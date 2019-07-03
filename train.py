@@ -376,6 +376,7 @@ def collect_report_features(fields):
 
 def build_model(model_opt, opt, fields, checkpoint):
     print('Building model...')
+    # both are NMTModel
     model1 = onmt.ModelConstructor.make_base_model(model_opt, fields,
                                                   use_gpu(opt), checkpoint, stage1=True)
     model2 = onmt.ModelConstructor.make_base_model(model_opt, fields,

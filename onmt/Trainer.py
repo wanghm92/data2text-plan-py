@@ -232,6 +232,8 @@ class Trainer(object):
             tgt = batch.tgt1_planning.unsqueeze(2)
             # F-prop through the model.
             outputs, attns, _, memory_bank = self.model(src, tgt, src_lengths)
+            if isinstance(memory_bank, tuple):
+                memory_bank, enc_embs = memory_bank
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
                     batch, outputs, attns, stage1=True)
@@ -242,10 +244,16 @@ class Trainer(object):
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
                             zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
+
+            trimmed_table_embs = None
+            if enc_embs is not None:
+                table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in  zip(torch.transpose(enc_embs, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+                trimmed_table_embs = torch.transpose(torch.cat(table_select), 0, 1)
+
             _, src_lengths = batch.src2
             tgt = onmt.io.make_features(batch, 'tgt2')
             # F-prop through the model.
-            outputs, attns, _, _ = self.model2(emb, tgt, src_lengths)
+            outputs, attns, _, _ = self.model2((emb, trimmed_table_embs), tgt, src_lengths)
             # Compute loss.
             batch_stats = self.valid_loss2.monolithic_compute_loss(
                 batch, outputs, attns, stage1=False)
@@ -325,6 +333,7 @@ class Trainer(object):
             assert False
             self.model.zero_grad()
 
+        enc_embs = None
         for batch in true_batchs:
             #Stage 1
             target_size = batch.tgt1.size(0)
@@ -346,7 +355,8 @@ class Trainer(object):
                     self.model.zero_grad()
                 outputs, attns, dec_state, memory_bank = \
                     self.model(src, tgt, src_lengths, dec_state)
-
+                if isinstance(memory_bank, tuple):
+                    memory_bank, enc_embs = memory_bank
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
@@ -373,9 +383,14 @@ class Trainer(object):
 
             #memory bank is of size src_len*batch_size*dim, inp_stage2 is of size inp_len*batch_size*1
             inp_stage2 = tgt[1:-1]
-            index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
-                            zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+            index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
+
+            trimmed_table_embs = None
+            if enc_embs is not None:
+                table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in  zip(torch.transpose(enc_embs, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+                trimmed_table_embs = torch.transpose(torch.cat(table_select), 0, 1)
+
             if self.data_type == 'text':
                 tgt_outer = onmt.io.make_features(batch, 'tgt2')
             for j in range(0, target_size-1, trunc_size):
@@ -386,7 +401,7 @@ class Trainer(object):
                 if self.grad_accum_count == 1:
                     self.model2.zero_grad()
                 outputs, attns, dec_state, _ = \
-                    self.model2(emb, tgt, src_lengths, dec_state)
+                    self.model2((emb, trimmed_table_embs), tgt, src_lengths, dec_state)
 
                 # retain_graph is false for the final truncation
                 retain_graph = (j + trunc_size) < (target_size - 1)

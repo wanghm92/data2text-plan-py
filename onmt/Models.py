@@ -81,6 +81,10 @@ class MeanEncoder(EncoderBase):
                  coverage_attn=False):
         super(MeanEncoder, self).__init__()
         self.num_layers = num_layers
+        self.table_embeddings = None
+        if isinstance(embeddings, tuple):
+            embeddings, table_embeddings = embeddings
+            self.table_embeddings = table_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
         self.attn = onmt.modules.GlobalSelfAttention(emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
@@ -90,13 +94,14 @@ class MeanEncoder(EncoderBase):
         self._check_args(src, lengths, encoder_state)
 
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
+        tbl_emb = self.table_embeddings(src)
         s_len, batch, emb_dim = emb.size()
         decoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 
         mean = decoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
         memory_bank = decoder_output
         encoder_final = (mean, mean)
-        return encoder_final, memory_bank
+        return encoder_final, (memory_bank, tbl_emb)
 
 
 class RNNEncoder(EncoderBase):
@@ -277,8 +282,15 @@ class RNNDecoderBase(nn.Module):
             hidden_size, coverage=coverage_attn,
             attn_type=attn_type
         )
+        self.table_attn = None
         if pointer_decoder_type == 'pointer':
             self.attn = onmt.modules.PointerAttention(hidden_size)
+        else:
+            # stage 2
+            self.table_attn = onmt.modules.GlobalAttention(
+                hidden_size, coverage=coverage_attn,
+                attn_type=attn_type
+            )
 
         # Set up a separated copy attention layer, if needed.
         self._copy = False
@@ -310,6 +322,10 @@ class RNNDecoderBase(nn.Module):
                         `[tgt_len x batch x src_len]`.
         """
         # Check
+        trimmed_table_embs = None
+        if isinstance(memory_bank, tuple):
+            memory_bank, trimmed_table_embs = memory_bank
+
         assert isinstance(state, RNNDecoderState)
         tgt_len, tgt_batch, _ = tgt.size()
         _, memory_batch, _ = memory_bank.size()
@@ -318,7 +334,7 @@ class RNNDecoderBase(nn.Module):
 
         # Run the forward pass of the RNN.
         decoder_final, decoder_outputs, attns = self._run_forward_pass(
-            tgt, memory_bank, state, memory_lengths=memory_lengths)
+            tgt, (memory_bank, trimmed_table_embs), state, memory_lengths=memory_lengths)
 
         if decoder_outputs is None:
             final_output = None
@@ -388,6 +404,9 @@ class PointerRNNDecoder(RNNDecoderBase):
                             type of attention Tensor array of every time
                             step from the decoder.
         """
+        if isinstance(memory_bank, tuple):
+            memory_bank, _ = memory_bank
+
         assert not self._copy  # TODO, no support yet.
         assert not self._coverage  # TODO, no support yet.
         # Initialize local and return variables.
@@ -467,6 +486,9 @@ class StdRNNDecoder(RNNDecoderBase):
                             type of attention Tensor array of every time
                             step from the decoder.
         """
+        if isinstance(memory_bank, tuple):
+            memory_bank, _ = memory_bank
+
         assert not self._copy  # TODO, no support yet.
         assert not self._coverage  # TODO, no support yet.
 
@@ -552,6 +574,10 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
         """
+        trimmed_table_embs = None
+        if isinstance(memory_bank, tuple):
+            memory_bank, trimmed_table_embs = memory_bank
+
         # Additional args check.
         input_feed = state.input_feed.squeeze(0)
         input_feed_batch, _ = input_feed.size()
@@ -566,6 +592,8 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             attns["copy"] = []
         if self._coverage:
             attns["coverage"] = []
+        if trimmed_table_embs is not None:
+            attns["table"] = []
 
         emb = self.embeddings(tgt)
         assert emb.dim() == 3  # len x batch x embedding_dim
@@ -585,6 +613,14 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 rnn_output,
                 memory_bank.transpose(0, 1),
                 memory_lengths=memory_lengths)
+
+            if trimmed_table_embs is not None:
+                _, table_attn = self.table_attn(
+                    rnn_output,
+                    trimmed_table_embs.transpose(0, 1),
+                    memory_lengths=memory_lengths)
+                attns["table"] += [table_attn]
+
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
@@ -605,8 +641,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
             # Run the forward pass of the copy attention layer.
             if self._copy and not self._reuse_copy_attn:
-                _, copy_attn = self.copy_attn(decoder_output,
-                                              memory_bank.transpose(0, 1))
+                _, copy_attn = self.copy_attn(decoder_output, memory_bank.transpose(0, 1))
                 attns["copy"] += [copy_attn]
             elif self._copy:
                 attns["copy"] = attns["std"]
@@ -671,11 +706,20 @@ class NMTModel(nn.Module):
         """
         tgt = tgt[:-1]  # exclude last target from inputs
 
+        trimmed_table_embs = None
+        if isinstance(src, tuple):
+            src, trimmed_table_embs = src
+
         enc_final, memory_bank = self.encoder(src, lengths)
-        enc_state = \
-            self.decoder.init_decoder_state(src, memory_bank, enc_final)
+
+        enc_embs = None
+        if isinstance(memory_bank, tuple):
+            memory_bank, enc_embs = memory_bank
+
+        enc_state = self.decoder.init_decoder_state(src, memory_bank, enc_final)
+
         decoder_outputs, dec_state, attns = \
-            self.decoder(tgt, memory_bank,
+            self.decoder(tgt, (memory_bank, trimmed_table_embs),
                          enc_state if dec_state is None
                          else dec_state,
                          memory_lengths=lengths)
@@ -683,7 +727,7 @@ class NMTModel(nn.Module):
             # Not yet supported on multi-gpu
             dec_state = None
             attns = None
-        return decoder_outputs, attns, dec_state, memory_bank
+        return decoder_outputs, attns, dec_state, (memory_bank, enc_embs)
 
 
 class DecoderState(object):

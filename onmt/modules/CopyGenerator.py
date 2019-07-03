@@ -10,6 +10,8 @@ import sys
 import numpy
 numpy.set_printoptions(threshold=sys.maxsize)
 
+LAMBDA = 1.0
+
 class CopyGenerator(nn.Module):
     """Generator module that additionally considers copying
     words directly from the source.
@@ -156,6 +158,25 @@ class CopyGeneratorCriterion(object):
         loss = -out.log().mul(target.ne(self.pad).float())
         return loss
 
+class TableReconstructionCriterion(object):
+    def __init__(self, pad, eps=1e-20):
+        self.eps = eps
+        self.pad = pad
+
+    def __call__(self, table_attn, align, target):
+        # print("[TableReconstructionCriterion] table_attn = {}".format(table_attn))
+        # print("[TableReconstructionCriterion] align = {}".format(align))
+        # print("[TableReconstructionCriterion] target = {}".format(target))
+        # Compute unks in align and target for readability
+        align_not_unk = align.ne(0).float()
+        # Copy probability of tokens in source
+        out = table_attn.gather(1, align.view(-1, 1)).view(-1)
+        # Set scores for unk to 0 and add eps
+        out = out.mul(align_not_unk) + self.eps
+
+        # Drop padding.
+        loss = -out.log().mul(target.ne(self.pad).float())
+        return loss.sum()
 
 class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
     """
@@ -172,8 +193,8 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         self.cur_dataset = None
         self.force_copy = force_copy
         self.normalize_by_length = normalize_by_length
-        self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy,
-                                                self.padding_idx)
+        self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy, self.padding_idx)
+        self.table_recon_criterion = TableReconstructionCriterion(self.padding_idx)
         self.switch_loss_criterion = nn.BCELoss(size_average=False)  # the losses are summed for each minibatch
 
     def _make_shard_state(self, batch, output, range_, attns):
@@ -186,12 +207,13 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
             "output": output,
             "target": batch.tgt2[range_[0] + 1: range_[1]],
             "copy_attn": attns.get("copy"),
+            "table_attn": attns.get("table"),
             "align": batch.alignment[range_[0] + 1: range_[1]],
             "ptrs": batch.ptrs[range_[0] + 1: range_[1]]
 
         }
 
-    def _compute_loss(self, batch, output, target, copy_attn, align, ptrs):
+    def _compute_loss(self, batch, output, target, copy_attn, table_attn, align, ptrs):
         """
         Compute the loss. The args must match self._make_shard_state().
         Args:
@@ -207,6 +229,7 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
                                 self._bottle(copy_attn),
                                 batch.src_map, align, ptrs)
         loss = self.criterion(scores, align, target)
+        tbr_loss = self.table_recon_criterion(self._bottle(table_attn), align, target)
         switch_loss = self.switch_loss_criterion(p_copy, align.ne(0).float().view(-1, 1))
         scores_data = scores.data.clone()
         scores_data = onmt.io.TextDataset.collapse_copy_scores(
@@ -238,5 +261,5 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         else:
             loss = loss.sum()
 
-        loss = loss + switch_loss  # summed over all samples for each minibatch
+        loss = loss + switch_loss + tbr_loss * LAMBDA # summed over all samples for each minibatch
         return loss, stats

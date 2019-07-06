@@ -29,42 +29,42 @@ do
 
         for MODEL2 in $(ls $BASE/gen_model/$IDENTIFIER/roto_stage2*_e$EPOCH.pt)
         do
-#            printf "\n"
-#            echo "Output summary is generated using MODEL2 : "$MODEL2
-#            echo "[*** Arguments ***] python translate.py -model $MODEL1 -model2 $MODEL2 -src1 rotowire/allclean/rotowire/src_$DATA.txt -tgt1 $BASE/gen/roto_stage1_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -src2 $BASE/gen/roto_stage1_inter_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -output $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt"
-#
-#            python translate.py -model $MODEL1 -model2 $MODEL2 -src1 rotowire/allclean/rotowire/src_$DATA.txt -tgt1 $BASE/gen/roto_stage1_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -src2 $BASE/gen/roto_stage1_inter_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -output $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -batch_size 10 -max_length 400 -min_length 100 -gpu 0
-#
-#            printf "\n"
-#            echo "Converting output summary to tokens [gens]"
-#            python3 mwe2tks.py --input $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt
-#
-#            printf "\n [BLEU beam5 gens]"
-#            echo "BLEU against rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt"
-#
-#            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt < $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt.tk
-#
-#            echo "BLEU against rotowire/$DATA/tgt_$DATA.txt"
-#
-#            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/tgt_$DATA.txt < $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt.tk
-#
-#            printf "\n"
-#            echo "Output summary is generated using Oracle content plan"
-#            python translate.py -model $MODEL1 -model2 $MODEL2 -src1 rotowire/allclean/rotowire/src_$DATA.txt -tgt1 rotowire/allclean/rotowire/$DATA\_content_plan.txt -src2 rotowire/allclean/rotowire/inter/$DATA\_content_plan.txt -output $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt -batch_size 10 -max_length 400 -min_length 100 -gpu 0
-#
-#            printf "\n"
-#            echo "Converting output summary to tokens [oracle]"
-#
-#            python3 mwe2tks.py --input $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt
-#
-#            printf "\n [BLEU oracle]"
-#            echo "BLEU against rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt"
-#
-#            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt < $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt.tk
-#
-#            echo "BLEU against rotowire/$DATA/tgt_$DATA.txt"
-#
-#            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/tgt_$DATA.txt < $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt.tk
+            printf "\n"
+            echo "Output summary is generated using MODEL2 : "$MODEL2
+            echo "[*** Arguments ***] python translate.py -model $MODEL1 -model2 $MODEL2 -src1 rotowire/allclean/rotowire/src_$DATA.txt -tgt1 $BASE/gen/roto_stage1_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -src2 $BASE/gen/roto_stage1_inter_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -output $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt"
+
+            python translate.py -model $MODEL1 -model2 $MODEL2 -src1 rotowire/allclean/rotowire/src_$DATA.txt -tgt1 $BASE/gen/roto_stage1_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -src2 $BASE/gen/roto_stage1_inter_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -output $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt -batch_size 10 -max_length 400 -min_length 100 -gpu 0
+
+            printf "\n"
+            echo "Converting output summary to tokens [gens]"
+            python3 mwe2tks.py --input $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt
+
+            printf "\n [BLEU beam5 gens]"
+            echo "BLEU against rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt"
+
+            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt < $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt.tk
+
+            echo "BLEU against rotowire/$DATA/tgt_$DATA.txt"
+
+            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/tgt_$DATA.txt < $BASE/gen/roto_stage2_$IDENTIFIER-beam5_gens.$DATA.e$EPOCH.txt.tk
+
+            printf "\n"
+            echo "Output summary is generated using Oracle content plan"
+            python translate.py -model $MODEL1 -model2 $MODEL2 -src1 rotowire/allclean/rotowire/src_$DATA.txt -tgt1 rotowire/allclean/rotowire/$DATA\_content_plan.txt -src2 rotowire/allclean/rotowire/inter/$DATA\_content_plan.txt -output $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt -batch_size 10 -max_length 400 -min_length 100 -gpu 0
+
+            printf "\n"
+            echo "Converting output summary to tokens [oracle]"
+
+            python3 mwe2tks.py --input $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt
+
+            printf "\n [BLEU oracle]"
+            echo "BLEU against rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt"
+
+            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/clean/tgt_$DATA.norm.filter.tk.trim.txt < $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt.tk
+
+            echo "BLEU against rotowire/$DATA/tgt_$DATA.txt"
+
+            perl ~/onmt-tf-whm/third_party/multi-bleu.perl rotowire/$DATA/tgt_$DATA.txt < $BASE/gen/roto_stage2_$IDENTIFIER-oracle.$DATA.e$EPOCH.txt.tk
 
             printf "\n"
             echo "generate tuples from content plan"

@@ -10,7 +10,7 @@ import sys
 import numpy
 numpy.set_printoptions(threshold=sys.maxsize)
 
-LAMBDA = 1.0
+LAMBDA = 0.1
 
 class CopyGenerator(nn.Module):
     """Generator module that additionally considers copying

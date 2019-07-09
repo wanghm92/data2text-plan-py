@@ -2,7 +2,7 @@
 PY3=/home/hongmin_wang/anaconda2/envs/py36_tf19/bin/python
 BASE=/home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/new_dataset/new_ncpcc
 #IDENTIFIER=newcc-final
-IDENTIFIER=newcc-trl-3e-1
+IDENTIFIER=newcc-trl-1e-1
 
 TRAIN_SRC1=$BASE/train/src_train.norm.trim.ncp.txt
 TRAIN_TGT1=$BASE/train/train_content_plan_ids.ncp.txt
@@ -48,7 +48,7 @@ VALID_DIR=/home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/new
 
 ###################################################################################################
 echo " ****** Evaluation ****** "
-for EPOCH in $(seq 20 32)
+for EPOCH in $(seq 19 19)
 do
     for MODEL1 in $(ls $OUTPUT/roto_stage1*_e$EPOCH.pt)
     do
@@ -56,23 +56,23 @@ do
         for MODEL2 in $(ls $OUTPUT/roto_stage2*_e$EPOCH.pt)
         do
 
-        echo "--"
-        echo $MODEL1
-        echo $MODEL2
-
-        echo "--"
-        echo " ****** STAGE 1 ****** "
-        echo $VALID_SRC1
-        python translate.py -model $MODEL1 -src1 $VALID_SRC1 -output $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 80 -gpu 0 -min_length 20 -stage1
-
-        echo " ****** create_content_plan_from_index ****** "
-        python create_content_plan_from_index.py $VALID_SRC1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.h5-tuples.valid.txt  $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
-
-        echo " ****** STAGE 2 ****** "
-        python translate.py -model $MODEL1 -model2 $MODEL2 -src1 $VALID_SRC1 -tgt1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -src2 $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt -output $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 850 -min_length 150 -gpu 0
-
-        echo " ****** BLEU ****** "
-        perl ~/onmt-tf-whm/third_party/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
+#        echo "--"
+#        echo $MODEL1
+#        echo $MODEL2
+#
+#        echo "--"
+#        echo " ****** STAGE 1 ****** "
+#        echo $VALID_SRC1
+#        python translate.py -model $MODEL1 -src1 $VALID_SRC1 -output $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 80 -gpu 0 -min_length 20 -stage1
+#
+#        echo " ****** create_content_plan_from_index ****** "
+#        python create_content_plan_from_index.py $VALID_SRC1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.h5-tuples.valid.txt  $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
+#
+#        echo " ****** STAGE 2 ****** "
+#        python translate.py -model $MODEL1 -model2 $MODEL2 -src1 $VALID_SRC1 -tgt1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -src2 $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt -output $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 850 -min_length 150 -gpu 0
+#
+#        echo " ****** BLEU ****** "
+#        perl ~/onmt-tf-whm/third_party/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
 
         cd /home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/evaluate
         echo " ****** RG CS CO ****** "

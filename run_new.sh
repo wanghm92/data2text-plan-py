@@ -76,7 +76,16 @@ do
 
         cd /home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/evaluate
         echo " ****** RG CS CO ****** "
-        $PY3 evaluate.py --dataset valid --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
+#        $PY3 evaluate.py --dataset valid --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
+
+        $PY3 make_human_eval.py \
+        --dataset valid \
+        --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.new.txt \
+        --template /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-my/new_rulebased.valid.txt \
+        --ws17 /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-harvard/outputs/new-roto-v2/new-roto-v2-beam5_gens.valid.24.txt \
+        --ent /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-entity-py/rotowire/outputs/clean_large/roto_clean_large-beam5_gens.valid.e19.txt \
+        --ncp /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py/new_outputs/newcc-final/roto_stage2_newcc-final.e18.valid.txt
+
         cd /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py
 
 #        echo "--"

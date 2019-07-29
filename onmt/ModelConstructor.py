@@ -11,9 +11,8 @@ import onmt.Models
 import onmt.modules
 from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, PointerRNNDecoder,\
                         StdRNNDecoder, InputFeedRNNDecoder
-from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, \
-                         TransformerEncoder, TransformerDecoder, \
-                         CNNEncoder, CNNDecoder, AudioEncoder
+from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, TransformerEncoder, \
+    TransformerDecoder, CNNEncoder, CNNDecoder, AudioEncoder
 from onmt.Utils import use_gpu
 
 def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_word=False):
@@ -33,22 +32,21 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
     word_padding_idx = word_dict.stoi[onmt.io.PAD_WORD]
     num_word_embeddings = len(word_dict)
 
-    feats_padding_idx = [feat_dict.stoi[onmt.io.PAD_WORD]
-                         for feat_dict in feature_dicts]
-    num_feat_embeddings = [len(feat_dict) for feat_dict in
-                           feature_dicts]
+    feats_padding_idx = [feat_dict.stoi[onmt.io.PAD_WORD] for feat_dict in feature_dicts]
+    num_feat_embeddings = [len(feat_dict) for feat_dict in feature_dicts]
 
-    return Embeddings(word_vec_size=embedding_dim,
-                      position_encoding=opt.position_encoding,
-                      feat_merge=opt.feat_merge,
-                      feat_vec_exponent=opt.feat_vec_exponent,
-                      feat_vec_size=opt.feat_vec_size,
-                      dropout=opt.dropout,
-                      word_padding_idx=word_padding_idx,
-                      feat_padding_idx=feats_padding_idx,
-                      word_vocab_size=num_word_embeddings,
-                      feat_vocab_sizes=num_feat_embeddings,
-                      discard_word=discard_word)
+    return Embeddings(
+        word_vec_size=embedding_dim,
+        position_encoding=opt.position_encoding,
+        feat_merge=opt.feat_merge,
+        feat_vec_exponent=opt.feat_vec_exponent,
+        feat_vec_size=opt.feat_vec_size,
+        dropout=opt.dropout,
+        word_padding_idx=word_padding_idx,
+        feat_padding_idx=feats_padding_idx,
+        word_vocab_size=num_word_embeddings,
+        feat_vocab_sizes=num_feat_embeddings,
+        discard_word=discard_word)
 
 
 def make_encoder(opt, embeddings, stage1=True):
@@ -63,12 +61,14 @@ def make_encoder(opt, embeddings, stage1=True):
     if isinstance(embeddings, tuple):
         embeddings, table_embeddings = embeddings
     if stage1:
+        # TODO: change this to graph encoder
         return MeanEncoder(opt.enc_layers1, (embeddings, table_embeddings), opt.src_word_vec_size, opt.attn_hidden, opt.dropout)
     else:
         # "rnn" or "brnn"
-        return RNNEncoder(opt.rnn_type, opt.brnn2, opt.enc_layers2,
-                          opt.rnn_size, opt.dropout, embeddings,
-                          opt.bridge)
+        return RNNEncoder(
+            opt.rnn_type, opt.brnn2, opt.enc_layers2,
+            opt.rnn_size, opt.dropout, embeddings,
+            opt.bridge)
 
 
 def make_decoder(opt, embeddings, stage1):
@@ -80,26 +80,28 @@ def make_decoder(opt, embeddings, stage1):
         stage1: stage1 decoder
     """
     if stage1:
-        return PointerRNNDecoder(opt.rnn_type, opt.brnn,
-                             opt.dec_layers1, opt.rnn_size,
-                             opt.global_attention,
-                             opt.coverage_attn,
-                             opt.context_gate,
-                             False,
-                             opt.dropout,
-                             embeddings,
-                             False,
-                             opt.decoder_type1)
+        return PointerRNNDecoder(
+            opt.rnn_type, opt.brnn,
+            opt.dec_layers1, opt.rnn_size,
+            opt.global_attention,
+            opt.coverage_attn,
+            opt.context_gate,
+            False,
+            opt.dropout,
+            embeddings,
+            False,
+            opt.decoder_type1)
     else:
-        return InputFeedRNNDecoder(opt.rnn_type, opt.brnn2,
-                                   opt.dec_layers2, opt.rnn_size,
-                                   opt.global_attention,
-                                   opt.coverage_attn,
-                                   opt.context_gate,
-                                   True,
-                                   opt.dropout,
-                                   embeddings,
-                                   opt.reuse_copy_attn)
+        return InputFeedRNNDecoder(
+            opt.rnn_type, opt.brnn2,
+            opt.dec_layers2, opt.rnn_size,
+            opt.global_attention,
+            opt.coverage_attn,
+            opt.context_gate,
+            True,
+            opt.dropout,
+            embeddings,
+            opt.reuse_copy_attn)
 
 def load_test_model(opt, dummy_opt, stage1=False):
     opt_model = opt.model if stage1 else opt.model2
@@ -140,12 +142,14 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     assert model_opt.model_type in ["text", "img", "audio"], \
         ("Unsupported model type %s" % (model_opt.model_type))
 
-    # Make encoder.
+    #! --- encoder ---
     if model_opt.model_type == "text":
         src_dict = fields[src].vocab
         feature_dicts = onmt.io.collect_feature_vocabs(fields, src)
+        #! make_embeddings
         src_embeddings = make_embeddings(model_opt, src_dict, feature_dicts)
 
+        # table-reconstruction
         table_embeddings = make_embeddings(model_opt, src_dict, feature_dicts, discard_word=True)
         # reusing the same embedding weights
         print(table_embeddings.make_embedding[0])
@@ -153,45 +157,42 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
         table_embeddings.field_lut.weight = src_embeddings.field_lut.weight
         table_embeddings.type_lut.weight = src_embeddings.type_lut.weight
         table_embeddings.ha_lut.weight = src_embeddings.ha_lut.weight
-
+        #! make_encoder
         encoder = make_encoder(model_opt, (src_embeddings, table_embeddings), stage1)
 
     elif model_opt.model_type == "img":
-        encoder = ImageEncoder(model_opt.enc_layers,
-                               model_opt.brnn,
-                               model_opt.rnn_size,
-                               model_opt.dropout)
+        encoder = ImageEncoder(model_opt.enc_layers, model_opt.brnn, model_opt.rnn_size, model_opt.dropout)
     elif model_opt.model_type == "audio":
-        encoder = AudioEncoder(model_opt.enc_layers,
-                               model_opt.brnn,
-                               model_opt.rnn_size,
-                               model_opt.dropout,
-                               model_opt.sample_rate,
-                               model_opt.window_size)
+        encoder = AudioEncoder(
+            model_opt.enc_layers,
+            model_opt.brnn,
+            model_opt.rnn_size,
+            model_opt.dropout,
+            model_opt.sample_rate,
+            model_opt.window_size)
 
-    # Make decoder.
+    #! --- decoder ---
     tgt_dict = fields[tgt].vocab
     feature_dicts = onmt.io.collect_feature_vocabs(fields, tgt)
-    tgt_embeddings = make_embeddings(model_opt, tgt_dict,
-                                     feature_dicts, for_encoder=False)
+    #! make_embeddings
+    tgt_embeddings = make_embeddings(model_opt, tgt_dict, feature_dicts, for_encoder=False)
 
     # Share the embedding matrix - preprocess with share_vocab required.
     if model_opt.share_embeddings:
         # src/tgt vocab should be the same if `-share_vocab` is specified.
         if src_dict != tgt_dict:
-            raise AssertionError('The `-share_vocab` should be set during '
-                                 'preprocess if you use share_embeddings!')
+            raise AssertionError('The `-share_vocab` should be set during preprocess if you use share_embeddings!')
 
         tgt_embeddings.word_lut.weight = src_embeddings.word_lut.weight
 
-    # NOTE: make decoder
+    #! make_decoder
     decoder = make_decoder(model_opt, tgt_embeddings, stage1)
 
-    # Make NMTModel(= encoder + decoder).
+    #! NMTModel = encoder + decoder
     model = NMTModel(encoder, decoder)
     model.model_type = model_opt.model_type
 
-    # Make Generator.
+    #! Generator
     if stage1:
         generator = nn.Sequential(
             nn.Linear(model_opt.rnn_size, len(fields["tgt1"].vocab)),
@@ -200,8 +201,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
             generator[0].weight = decoder.embeddings.word_lut.weight
     else:
         # NOTE: CopyGenerator
-        generator = CopyGenerator(model_opt.rnn_size,
-                                  fields["tgt2"].vocab)
+        generator = CopyGenerator(model_opt.rnn_size, fields["tgt2"].vocab)
 
     # Load the model states from checkpoint or initialize them.
     if checkpoint is not None:

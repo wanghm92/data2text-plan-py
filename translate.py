@@ -70,15 +70,16 @@ def main():
     out_file = codecs.open(opt.output, 'w', 'utf-8')
 
     # Test data
-    data = onmt.io.build_dataset(fields, opt.data_type,
-                                 opt.src1, opt.tgt1,
-                                 opt.src2, opt.tgt2,
-                                 src_dir=opt.src_dir,
-                                 sample_rate=opt.sample_rate,
-                                 window_size=opt.window_size,
-                                 window_stride=opt.window_stride,
-                                 window=opt.window,
-                                 use_filter_pred=False)
+    data = onmt.io.build_dataset(
+        fields, opt.data_type,
+        opt.src1, opt.tgt1,
+        opt.src2, opt.tgt2,
+        src_dir=opt.src_dir,
+        sample_rate=opt.sample_rate,
+        window_size=opt.window_size,
+        window_stride=opt.window_stride,
+        window=opt.window,
+        use_filter_pred=False)
 
     def sort_minibatch_key(ex):
         """ Sort using length of source sentences and length of target sentence """
@@ -96,10 +97,11 @@ def main():
         sort_within_batch=True, shuffle=False)
 
     # Translator
-    scorer = onmt.translate.GNMTGlobalScorer(opt.alpha,
-                                             opt.beta,
-                                             opt.coverage_penalty,
-                                             opt.length_penalty)
+    scorer = onmt.translate.GNMTGlobalScorer(
+        opt.alpha,
+        opt.beta,
+        opt.coverage_penalty,
+        opt.length_penalty)
     tgt_plan_map = None
 
     if opt.src2 is None:
@@ -166,8 +168,7 @@ def main():
 
     if opt.dump_beam:
         import json
-        json.dump(translator.beam_accum,
-                  codecs.open(opt.dump_beam, 'w', 'utf-8'))
+        json.dump(translator.beam_accum, codecs.open(opt.dump_beam, 'w', 'utf-8'))
 
 
 if __name__ == "__main__":

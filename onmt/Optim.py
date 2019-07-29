@@ -11,16 +11,16 @@ class Optim(object):
     as grad manipulations.
 
     Args:
-      method (:obj:`str`): one of [sgd, adagrad, adadelta, adam]
-      lr (float): learning rate
-      lr_decay (float, optional): learning rate decay multiplier
-      start_decay_at (int, optional): epoch to start learning rate decay
-      beta1, beta2 (float, optional): parameters for adam
-      adagrad_accum (float, optional): initialization parameter for adagrad
-      decay_method (str, option): custom decay options
-      warmup_steps (int, option): parameter for `noam` decay
-      model_size (int, option): parameter for `noam` decay
-    """
+        method (:obj:`str`): one of [sgd, adagrad, adadelta, adam]
+        lr (float): learning rate
+        lr_decay (float, optional): learning rate decay multiplier
+        start_decay_at (int, optional): epoch to start learning rate decay
+        beta1, beta2 (float, optional): parameters for adam
+        adagrad_accum (float, optional): initialization parameter for adagrad
+        decay_method (str, option): custom decay options
+        warmup_steps (int, option): parameter for `noam` decay
+        model_size (int, option): parameter for `noam` decay
+        """
     # We use the default parameters for Adam that are suggested by
     # the original paper https://arxiv.org/pdf/1412.6980.pdf
     # These values are also used by other established implementations,
@@ -31,13 +31,16 @@ class Optim(object):
     # https://arxiv.org/pdf/1706.03762.pdf, particularly the value beta2=0.98
     # was used there however, beta2=0.999 is still arguably the more
     # established value, so we use that here as well
-    def __init__(self, method, lr, max_grad_norm,
-                 lr_decay=1, start_decay_at=None,
-                 beta1=0.9, beta2=0.999,
-                 adagrad_accum=0.0,
-                 decay_method=None,
-                 warmup_steps=4000,
-                 model_size=None):
+    def __init__(
+        self, method, lr, max_grad_norm,
+        lr_decay=1, start_decay_at=None,
+        beta1=0.9, beta2=0.999,
+        adagrad_accum=0.0,
+        decay_method=None,
+        warmup_steps=4000,
+        model_size=None
+        ):
+
         self.last_ppl = None
         self.lr = lr
         self.original_lr = lr

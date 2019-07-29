@@ -54,20 +54,21 @@ class Statistics(object):
         """Write out statistics to stdout.
 
         Args:
-           epoch (int): current epoch
-           batch (int): current batch
-           n_batch (int): total batches
-           start (int): start time of epoch.
+            epoch (int): current epoch
+            batch (int): current batch
+            n_batch (int): total batches
+            start (int): start time of epoch.
         """
         t = self.elapsed_time()
-        print(("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; " +
-               "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
-              (epoch, batch,  n_batches,
-               self.accuracy(),
-               self.ppl(),
-               self.n_src_words / (t + 1e-5),
-               self.n_words / (t + 1e-5),
-               time.time() - start))
+        print(
+            ("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; " +
+            "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
+            (epoch, batch,  n_batches,
+            self.accuracy(),
+            self.ppl(),
+            self.n_src_words / (t + 1e-5),
+            self.n_words / (t + 1e-5),
+            time.time() - start))
         sys.stdout.flush()
 
     def log(self, prefix, experiment, lr):
@@ -94,11 +95,11 @@ class Trainer(object):
             model(:py:class:`onmt.Model.NMTModel`): translation model to train
 
             train_loss(:obj:`onmt.Loss.LossComputeBase`):
-               training loss computation
+                training loss computation
             valid_loss(:obj:`onmt.Loss.LossComputeBase`):
-               training loss computation
+                training loss computation
             optim(:obj:`onmt.Optim.Optim`):
-               the optimizer responsible for update
+                the optimizer responsible for update
             trunc_size(int): length of truncated back propagation through time
             shard_size(int): compute loss in shards of this size for efficiency
             data_type(string): type of the source input: [text|img|audio]
@@ -106,9 +107,10 @@ class Trainer(object):
             grad_accum_count(int): accumulate gradients this many times.
     """
 
-    def __init__(self, model, model2, train_loss, valid_loss, train_loss2, valid_loss2, optim, optim2,
-                 trunc_size=0, shard_size=32, data_type='text',
-                 norm_method="sents", grad_accum_count=1, cuda= False):
+    def __init__(
+        self, model, model2, train_loss, valid_loss, train_loss2, valid_loss2, optim, optim2,
+        trunc_size=0, shard_size=32, data_type='text',
+        norm_method="sents", grad_accum_count=1, cuda= False):
         # Basic attributes.
         self.model = model
         self.model2 = model2
@@ -128,8 +130,7 @@ class Trainer(object):
         assert(grad_accum_count > 0)
         if grad_accum_count > 1:
             assert(self.trunc_size == 0), \
-                """To enable accumulated gradients,
-                   you must disable target sequence truncating."""
+                """To enable accumulated gradients, you must disable target sequence truncating."""
 
         # Set model in training mode.
         self.model.train()
@@ -177,6 +178,7 @@ class Trainer(object):
                 normalization += batch.batch_size
 
             if accum == self.grad_accum_count:
+                #! The actual training part
                 self._gradient_accumulation(
                         true_batchs, total_stats,
                         report_stats, total_stats2, report_stats2, normalization)
@@ -197,6 +199,7 @@ class Trainer(object):
                 normalization = 0
                 idx += 1
 
+        # remaining batch
         if len(true_batchs) > 0:
             self._gradient_accumulation(
                     true_batchs,
@@ -247,7 +250,7 @@ class Trainer(object):
 
             trimmed_table_embs = None
             if enc_embs is not None:
-                table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in  zip(torch.transpose(enc_embs, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+                table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(enc_embs, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
                 trimmed_table_embs = torch.transpose(torch.cat(table_select), 0, 1)
 
             _, src_lengths = batch.src2
@@ -280,12 +283,8 @@ class Trainer(object):
             fields (dict): fields and vocabulary
             valid_stats : statistics of last validation run
         """
-        real_model = (self.model.module
-                      if isinstance(self.model, nn.DataParallel)
-                      else self.model)
-        real_generator = (real_model.generator.module
-                          if isinstance(real_model.generator, nn.DataParallel)
-                          else real_model.generator)
+        real_model = self.model.module if isinstance(self.model, nn.DataParallel) else self.model
+        real_generator = real_model.generator.module if isinstance(real_model.generator, nn.DataParallel) else real_model.generator
 
         model_state_dict = real_model.state_dict()
         model_state_dict = {k: v for k, v in model_state_dict.items()
@@ -300,16 +299,16 @@ class Trainer(object):
             'optim': self.optim,
         }
         torch.save(checkpoint,
-                   '%s_stage1_acc_%.4f_ppl_%.4f_e%d.pt'
-                   % (opt.save_model, valid_stats.accuracy(),
-                      valid_stats.ppl(), epoch))
+                    '%s_stage1_acc_%.4f_ppl_%.4f_e%d.pt'
+                    % (opt.save_model, valid_stats.accuracy(),
+                        valid_stats.ppl(), epoch))
 
         real_model = (self.model2.module
-                      if isinstance(self.model2, nn.DataParallel)
-                      else self.model2)
+                        if isinstance(self.model2, nn.DataParallel)
+                        else self.model2)
         real_generator = (real_model.generator.module
-                          if isinstance(real_model.generator, nn.DataParallel)
-                          else real_model.generator)
+                            if isinstance(real_model.generator, nn.DataParallel)
+                            else real_model.generator)
 
         model_state_dict = real_model.state_dict()
         model_state_dict = {k: v for k, v in model_state_dict.items()
@@ -324,9 +323,9 @@ class Trainer(object):
             'optim': self.optim2,
         }
         torch.save(checkpoint,
-                   '%s_stage2_acc_%.4f_ppl_%.4f_e%d.pt'
-                   % (opt.save_model, valid_stats2.accuracy(),
-                      valid_stats2.ppl(), epoch))
+                    '%s_stage2_acc_%.4f_ppl_%.4f_e%d.pt'
+                    % (opt.save_model, valid_stats2.accuracy(),
+                        valid_stats2.ppl(), epoch))
 
     def _gradient_accumulation(self, true_batchs, total_stats, report_stats, total_stats2, report_stats2, normalization):
         if self.grad_accum_count > 1:
@@ -335,7 +334,7 @@ class Trainer(object):
 
         enc_embs = None
         for batch in true_batchs:
-            #Stage 1
+            #! Stage 1
             target_size = batch.tgt1.size(0)
 
             trunc_size = target_size
@@ -353,8 +352,7 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
-                outputs, attns, dec_state, memory_bank = \
-                    self.model(src, tgt, src_lengths, dec_state)
+                outputs, attns, dec_state, memory_bank = self.model(src, tgt, src_lengths, dec_state)
                 if isinstance(memory_bank, tuple):
                     memory_bank, enc_embs = memory_bank
                 # 3. Compute loss in shards for memory efficiency.
@@ -369,7 +367,7 @@ class Trainer(object):
                 if dec_state is not None:
                     dec_state.detach()
 
-            #Stage 2
+            #! Stage 2
             target_size = batch.tgt2.size(0)
             if self.trunc_size:
                 trunc_size = self.trunc_size
@@ -381,7 +379,7 @@ class Trainer(object):
             _, src_lengths = batch.src2
             report_stats2.n_src_words += src_lengths.sum()
 
-            #memory bank is of size src_len*batch_size*dim, inp_stage2 is of size inp_len*batch_size*1
+            # memory bank is of size src_len*batch_size*dim, inp_stage2 is of size inp_len*batch_size*1
             inp_stage2 = tgt[1:-1]
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
@@ -400,8 +398,7 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model2.zero_grad()
-                outputs, attns, dec_state, _ = \
-                    self.model2((emb, trimmed_table_embs), tgt, src_lengths, dec_state)
+                outputs, attns, dec_state, _ = self.model2((emb, trimmed_table_embs), tgt, src_lengths, dec_state)
 
                 # retain_graph is false for the final truncation
                 retain_graph = (j + trunc_size) < (target_size - 1)

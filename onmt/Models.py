@@ -30,22 +30,22 @@ class EncoderBase(nn.Module):
 
     .. mermaid::
 
-       graph BT
-          A[Input]
-          subgraph RNN
+        graph BT
+            A[Input]
+            subgraph RNN
             C[Pos 1]
             D[Pos 2]
             E[Pos N]
-          end
-          F[Memory_Bank]
-          G[Final]
-          A-->C
-          A-->D
-          A-->E
-          C-->F
-          D-->F
-          E-->F
-          E-->G
+            end
+            F[Memory_Bank]
+            G[Final]
+            A-->C
+            A-->D
+            A-->E
+            C-->F
+            D-->F
+            E-->F
+            E-->G
     """
     def _check_args(self, input, lengths=None, hidden=None):
         s_len, n_batch, n_feats = input.size()
@@ -57,10 +57,10 @@ class EncoderBase(nn.Module):
         """
         Args:
             src (:obj:`LongTensor`):
-               padded sequences of sparse indices `[src_len x batch x nfeat]`
+                padded sequences of sparse indices `[src_len x batch x nfeat]`
             lengths (:obj:`LongTensor`): length of each sequence `[batch]`
             encoder_state (rnn-class specific):
-               initial encoder_state state.
+                initial encoder_state state.
 
         Returns:
             (tuple of :obj:`FloatTensor`, :obj:`FloatTensor`):
@@ -74,11 +74,10 @@ class MeanEncoder(EncoderBase):
     """A trivial non-recurrent encoder. Simply applies mean pooling.
 
     Args:
-       num_layers (int): number of replicated layers
-       embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
+        num_layers (int): number of replicated layers
+        embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
     """
-    def __init__(self, num_layers, embeddings, emb_size, attn_hidden, dropout=0.0, attn_type="general",
-                 coverage_attn=False):
+    def __init__(self, num_layers, embeddings, emb_size, attn_hidden, dropout=0.0, attn_type="general", coverage_attn=False):
         super(MeanEncoder, self).__init__()
         self.num_layers = num_layers
         self.table_embeddings = None
@@ -108,17 +107,18 @@ class RNNEncoder(EncoderBase):
     """ A generic recurrent neural network encoder.
 
     Args:
-       rnn_type (:obj:`str`):
-          style of recurrent unit to use, one of [RNN, LSTM, GRU, SRU]
-       bidirectional (bool) : use a bidirectional RNN
-       num_layers (int) : number of stacked layers
-       hidden_size (int) : hidden size of each layer
-       dropout (float) : dropout value for :obj:`nn.Dropout`
-       embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
+        rnn_type (:obj:`str`):
+            style of recurrent unit to use, one of [RNN, LSTM, GRU, SRU]
+        bidirectional (bool) : use a bidirectional RNN
+        num_layers (int) : number of stacked layers
+        hidden_size (int) : hidden size of each layer
+        dropout (float) : dropout value for :obj:`nn.Dropout`
+        embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
     """
-    def __init__(self, rnn_type, bidirectional, num_layers,
-                 hidden_size, dropout=0.0, embeddings=None,
-                 use_bridge=False):
+    def __init__(
+        self, rnn_type, bidirectional, num_layers,
+        hidden_size, dropout=0.0, embeddings=None,
+        use_bridge=False):
         super(RNNEncoder, self).__init__()
         assert embeddings is not None
 
@@ -164,9 +164,7 @@ class RNNEncoder(EncoderBase):
             encoder_final = self._bridge(encoder_final)
         return encoder_final, memory_bank
 
-    def _initialize_bridge(self, rnn_type,
-                           hidden_size,
-                           num_layers):
+    def _initialize_bridge(self, rnn_type, hidden_size, num_layers):
 
         # LSTM has hidden and cell state, other only one
         number_of_states = 2 if rnn_type == "LSTM" else 1
@@ -174,10 +172,9 @@ class RNNEncoder(EncoderBase):
         self.total_hidden_dim = hidden_size * num_layers
 
         # Build a linear layer for each
-        self.bridge = nn.ModuleList([nn.Linear(self.total_hidden_dim,
-                                               self.total_hidden_dim,
-                                               bias=True)
-                                     for i in range(number_of_states)])
+        self.bridge = nn.ModuleList(
+            [nn.Linear(self.total_hidden_dim, self.total_hidden_dim, bias=True) for i in range(number_of_states)]
+            )
 
     def _bridge(self, hidden):
         """
@@ -192,8 +189,7 @@ class RNNEncoder(EncoderBase):
             return F.relu(result).view(size)
 
         if isinstance(hidden, tuple):  # LSTM
-            outs = tuple([bottle_hidden(layer, hidden[ix])
-                          for ix, layer in enumerate(self.bridge)])
+            outs = tuple([bottle_hidden(layer, hidden[ix]) for ix, layer in enumerate(self.bridge)])
         else:
             outs = bottle_hidden(self.bridge[0], hidden)
         return outs
@@ -209,48 +205,50 @@ class RNNDecoderBase(nn.Module):
 
     .. mermaid::
 
-       graph BT
-          A[Input]
-          subgraph RNN
-             C[Pos 1]
-             D[Pos 2]
-             E[Pos N]
-          end
-          G[Decoder State]
-          H[Decoder State]
-          I[Outputs]
-          F[Memory_Bank]
-          A--emb-->C
-          A--emb-->D
-          A--emb-->E
-          H-->C
-          C-- attn --- F
-          D-- attn --- F
-          E-- attn --- F
-          C-->I
-          D-->I
-          E-->I
-          E-->G
-          F---I
+        graph BT
+            A[Input]
+            subgraph RNN
+                C[Pos 1]
+                D[Pos 2]
+                E[Pos N]
+            end
+            G[Decoder State]
+            H[Decoder State]
+            I[Outputs]
+            F[Memory_Bank]
+            A--emb-->C
+            A--emb-->D
+            A--emb-->E
+            H-->C
+            C-- attn --- F
+            D-- attn --- F
+            E-- attn --- F
+            C-->I
+            D-->I
+            E-->I
+            E-->G
+            F---I
 
     Args:
-       rnn_type (:obj:`str`):
-          style of recurrent unit to use, one of [RNN, LSTM, GRU, SRU]
-       bidirectional_encoder (bool) : use with a bidirectional encoder
-       num_layers (int) : number of stacked layers
-       hidden_size (int) : hidden size of each layer
-       attn_type (str) : see :obj:`onmt.modules.GlobalAttention`
-       coverage_attn (str): see :obj:`onmt.modules.GlobalAttention`
-       context_gate (str): see :obj:`onmt.modules.ContextGate`
-       copy_attn (bool): setup a separate copy attention mechanism
-       dropout (float) : dropout value for :obj:`nn.Dropout`
-       embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
+        rnn_type (:obj:`str`):
+            style of recurrent unit to use, one of [RNN, LSTM, GRU, SRU]
+        bidirectional_encoder (bool) : use with a bidirectional encoder
+        num_layers (int) : number of stacked layers
+        hidden_size (int) : hidden size of each layer
+        attn_type (str) : see :obj:`onmt.modules.GlobalAttention`
+        coverage_attn (str): see :obj:`onmt.modules.GlobalAttention`
+        context_gate (str): see :obj:`onmt.modules.ContextGate`
+        copy_attn (bool): setup a separate copy attention mechanism
+        dropout (float) : dropout value for :obj:`nn.Dropout`
+        embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
     """
-    def __init__(self, rnn_type, bidirectional_encoder, num_layers,
-                 hidden_size, attn_type="general",
-                 coverage_attn=False, context_gate=None,
-                 copy_attn=False, dropout=0.0, embeddings=None,
-                 reuse_copy_attn=False, pointer_decoder_type = None):
+    def __init__(
+        self, rnn_type, bidirectional_encoder, num_layers,
+        hidden_size, attn_type="general",
+        coverage_attn=False, context_gate=None,
+        copy_attn=False, dropout=0.0, embeddings=None,
+        reuse_copy_attn=False, pointer_decoder_type = None
+        ):
         super(RNNDecoderBase, self).__init__()
 
         # Basic attributes.
@@ -262,11 +260,12 @@ class RNNDecoderBase(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         # Build the RNN.
-        self.rnn = self._build_rnn(rnn_type,
-                                   input_size=self._input_size,
-                                   hidden_size=hidden_size,
-                                   num_layers=num_layers,
-                                   dropout=dropout)
+        self.rnn = self._build_rnn(
+            rnn_type,
+            input_size=self._input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout)
 
         # Set up the context gate.
         self.context_gate = None
@@ -308,15 +307,15 @@ class RNNDecoderBase(nn.Module):
             tgt (`LongTensor`): sequences of padded tokens
                                 `[tgt_len x batch x nfeats]`.
             memory_bank (`FloatTensor`): vectors from the encoder
-                 `[src_len x batch x hidden]`.
+                    `[src_len x batch x hidden]`.
             state (:obj:`onmt.Models.DecoderState`):
-                 decoder state object to initialize the decoder
+                    decoder state object to initialize the decoder
             memory_lengths (`LongTensor`): the padded source lengths
                 `[batch]`.
         Returns:
             (`FloatTensor`,:obj:`onmt.Models.DecoderState`,`FloatTensor`):
                 * decoder_outputs: output from the decoder (after attn)
-                         `[tgt_len x batch x hidden]`.
+                            `[tgt_len x batch x hidden]`.
                 * decoder_state: final hidden state from the decoder
                 * attns: distribution over src at each tgt
                         `[tgt_len x batch x src_len]`.
@@ -363,11 +362,11 @@ class RNNDecoderBase(nn.Module):
 
         if isinstance(encoder_final, tuple):  # LSTM
             return RNNDecoderState(self.hidden_size,
-                                   tuple([_fix_enc_hidden(enc_hid)
-                                         for enc_hid in encoder_final]))
+                                    tuple([_fix_enc_hidden(enc_hid)
+                                            for enc_hid in encoder_final]))
         else:  # GRU
             return RNNDecoderState(self.hidden_size,
-                                   _fix_enc_hidden(encoder_final))
+                                    _fix_enc_hidden(encoder_final))
 
 class PointerRNNDecoder(RNNDecoderBase):
     """
@@ -390,16 +389,16 @@ class PointerRNNDecoder(RNNDecoderBase):
         Must be overriden by all subclasses.
         Args:
             tgt (LongTensor): a sequence of input tokens tensors
-                                 [len x batch x nfeats].
+                                    [len x batch x nfeats].
             memory_bank (FloatTensor): output(tensor sequence) from the encoder
                         RNN of size (src_len x batch x hidden_size).
             state (FloatTensor): hidden state from the encoder RNN for
-                                 initializing the decoder.
+                                    initializing the decoder.
             memory_lengths (LongTensor): the source memory_bank lengths.
         Returns:
             decoder_final (Variable): final hidden state from the decoder.
             decoder_outputs ([FloatTensor]): an array of output of every time
-                                     step from the decoder.
+                                        step from the decoder.
             attns (dict of (str, [FloatTensor]): a dictionary of different
                             type of attention Tensor array of every time
                             step from the decoder.
@@ -413,7 +412,7 @@ class PointerRNNDecoder(RNNDecoderBase):
         attns = {}
         emb = torch.transpose(torch.cat(
             [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
-             zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(tgt,2)))]), 0, 1)
+                zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(tgt,2)))]), 0, 1)
         # Run the forward pass of the RNN.
         if isinstance(self.rnn, nn.GRU):
             rnn_output, decoder_final = self.rnn(emb, state.hidden[0])
@@ -472,16 +471,16 @@ class StdRNNDecoder(RNNDecoderBase):
         Must be overriden by all subclasses.
         Args:
             tgt (LongTensor): a sequence of input tokens tensors
-                                 [len x batch x nfeats].
+                                    [len x batch x nfeats].
             memory_bank (FloatTensor): output(tensor sequence) from the encoder
                         RNN of size (src_len x batch x hidden_size).
             state (FloatTensor): hidden state from the encoder RNN for
-                                 initializing the decoder.
+                                    initializing the decoder.
             memory_lengths (LongTensor): the source memory_bank lengths.
         Returns:
             decoder_final (Variable): final hidden state from the decoder.
             decoder_outputs ([FloatTensor]): an array of output of every time
-                                     step from the decoder.
+                                        step from the decoder.
             attns (dict of (str, [FloatTensor]): a dictionary of different
                             type of attention Tensor array of every time
                             step from the decoder.
@@ -553,20 +552,20 @@ class InputFeedRNNDecoder(RNNDecoderBase):
 
     .. mermaid::
 
-       graph BT
-          A[Input n-1]
-          AB[Input n]
-          subgraph RNN
+    graph BT
+        A[Input n-1]
+        AB[Input n]
+        subgraph RNN
             E[Pos n-1]
             F[Pos n]
             E --> F
-          end
-          G[Encoder]
-          H[Memory_Bank n-1]
-          A --> E
-          AB --> F
-          E --> H
-          G --> H
+        end
+        G[Encoder]
+        H[Memory_Bank n-1]
+        A --> E
+        AB --> F
+        E --> H
+        G --> H
     """
 
     def _run_forward_pass(self, tgt, memory_bank, state, memory_lengths=None):
@@ -648,8 +647,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         # Return result.
         return hidden, decoder_outputs, attns
 
-    def _build_rnn(self, rnn_type, input_size,
-                   hidden_size, num_layers, dropout):
+    def _build_rnn(self, rnn_type, input_size, hidden_size, num_layers, dropout):
         assert not rnn_type == "SRU", "SRU doesn't support input feed! " \
                 "Please set -input_feed 0!"
         if rnn_type == "LSTM":
@@ -673,9 +671,9 @@ class NMTModel(nn.Module):
     for a simple, generic encoder + decoder model.
 
     Args:
-      encoder (:obj:`EncoderBase`): an encoder object
-      decoder (:obj:`RNNDecoderBase`): a decoder object
-      multi<gpu (bool): setup for multigpu support
+        encoder (:obj:`EncoderBase`): an encoder object
+        decoder (:obj:`RNNDecoderBase`): a decoder object
+        multi<gpu (bool): setup for multigpu support
     """
     def __init__(self, encoder, decoder, multigpu=False):
         self.multigpu = multigpu
@@ -694,7 +692,7 @@ class NMTModel(nn.Module):
                 of size `[len x batch x features]`. however, may be an
                 image or other generic input depending on encoder.
             tgt (:obj:`LongTensor`):
-                 a target sequence of size `[tgt_len x batch]`.
+                    a target sequence of size `[tgt_len x batch]`.
             lengths(:obj:`LongTensor`): the src lengths, pre-padding `[batch]`.
             dec_state (:obj:`DecoderState`, optional): initial decoder state
         Returns:
@@ -704,7 +702,7 @@ class NMTModel(nn.Module):
                  * dictionary attention dists of `[tgt_len x batch x src_len]`
                  * final decoder state
         """
-        tgt = tgt[:-1]  # exclude last target from inputs
+        tgt = tgt[:-1]  #! exclude last target from inputs
 
         trimmed_table_embs = None
         if isinstance(src, tuple):
@@ -720,9 +718,9 @@ class NMTModel(nn.Module):
 
         decoder_outputs, dec_state, attns = \
             self.decoder(tgt, (memory_bank, trimmed_table_embs),
-                         enc_state if dec_state is None
-                         else dec_state,
-                         memory_lengths=lengths)
+                            enc_state if dec_state is None
+                            else dec_state,
+                            memory_lengths=lengths)
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None
@@ -748,13 +746,12 @@ class DecoderState(object):
             sizes = e.size()
             br = sizes[1]
             if len(sizes) == 3:
-                sent_states = e.view(sizes[0], beam_size, br // beam_size,
-                                     sizes[2])[:, :, idx]
+                sent_states = e.view(sizes[0], beam_size, br // beam_size, sizes[2])[:, :, idx]
             else:
                 sent_states = e.view(sizes[0], beam_size,
-                                     br // beam_size,
-                                     sizes[2],
-                                     sizes[3])[:, :, idx]
+                                        br // beam_size,
+                                        sizes[2],
+                                        sizes[3])[:, :, idx]
 
             sent_states.data.copy_(
                 sent_states.data.index_select(1, positions))
@@ -777,8 +774,7 @@ class RNNDecoderState(DecoderState):
         # Init the input feed.
         batch_size = self.hidden[0].size(1)
         h_size = (batch_size, hidden_size)
-        self.input_feed = Variable(self.hidden[0].data.new(*h_size).zero_(),
-                                   requires_grad=False).unsqueeze(0)
+        self.input_feed = Variable(self.hidden[0].data.new(*h_size).zero_(), requires_grad=False).unsqueeze(0)
 
     @property
     def _all(self):

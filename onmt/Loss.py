@@ -2,7 +2,7 @@
 This file handles the details of the loss function during training.
 
 This includes: LossComputeBase and the standard NMTLossCompute, and
-               sharded loss compute stuff.
+            sharded loss compute stuff.
 """
 from __future__ import division
 import torch
@@ -28,10 +28,10 @@ class LossComputeBase(nn.Module):
 
     Args:
         generator (:obj:`nn.Module`) :
-             module that maps the output of the decoder to a
-             distribution over the target vocabulary.
+            module that maps the output of the decoder to a
+            distribution over the target vocabulary.
         tgt_vocab (:obj:`Vocab`) :
-             torchtext vocab object representing the target output
+            torchtext vocab object representing the target output
         normalzation (str): normalize by "sents" or "tokens"
     """
     def __init__(self, generator, tgt_vocab):
@@ -72,13 +72,13 @@ class LossComputeBase(nn.Module):
         Compute the forward loss for the batch.
 
         Args:
-          batch (batch): batch of labeled examples
-          output (:obj:`FloatTensor`):
-              output of decoder model `[tgt_len x batch x hidden]`
-          attns (dict of :obj:`FloatTensor`) :
-              dictionary of attention distributions
-              `[tgt_len x batch x src_len]`
-          stage1: is it stage1
+            batch (batch): batch of labeled examples
+            output (:obj:`FloatTensor`):
+                output of decoder model `[tgt_len x batch x hidden]`
+            attns (dict of :obj:`FloatTensor`) :
+                dictionary of attention distributions
+                `[tgt_len x batch x src_len]`
+            stage1: is it stage1
         Returns:
             :obj:`onmt.Statistics`: loss statistics
         """
@@ -91,9 +91,11 @@ class LossComputeBase(nn.Module):
 
         return batch_stats
 
-    def sharded_compute_loss(self, batch, output, attns,
-                             cur_trunc, trunc_size, shard_size,
-                             normalization, retain_graph=False):
+    def sharded_compute_loss(
+        self, batch, output, attns,
+        cur_trunc, trunc_size, shard_size,
+        normalization, retain_graph=False
+        ):
         """Compute the forward loss and backpropagate.  Computation is done
         with shards and optionally truncation for memory efficiency.
 
@@ -107,15 +109,15 @@ class LossComputeBase(nn.Module):
         in the RNN buffers.
 
         Args:
-          batch (batch) : batch of labeled examples
-          output (:obj:`FloatTensor`) :
-              output of decoder model `[tgt_len x batch x hidden]`
-          attns (dict) : dictionary of attention distributions
-              `[tgt_len x batch x src_len]`
-          cur_trunc (int) : starting position of truncation window
-          trunc_size (int) : length of truncation window
-          shard_size (int) : maximum number of examples in a shard
-          normalization (int) : Loss is divided by this number
+            batch (batch) : batch of labeled examples
+            output (:obj:`FloatTensor`) :
+                output of decoder model `[tgt_len x batch x hidden]`
+            attns (dict) : dictionary of attention distributions
+                `[tgt_len x batch x src_len]`
+            cur_trunc (int) : starting position of truncation window
+            trunc_size (int) : length of truncation window
+            shard_size (int) : maximum number of examples in a shard
+            normalization (int) : Loss is divided by this number
 
         Returns:
             :obj:`onmt.Statistics`: validation loss statistics
@@ -145,9 +147,7 @@ class LossComputeBase(nn.Module):
         """
         pred = scores.max(1)[1]
         non_padding = target.ne(self.padding_idx)
-        num_correct = pred.eq(target) \
-                          .masked_select(non_padding) \
-                          .sum()
+        num_correct = pred.eq(target).masked_select(non_padding).sum()
         return onmt.Statistics(loss[0], non_padding.sum(), num_correct)
 
     def _bottle(self, v):
@@ -161,8 +161,10 @@ class NMTLossCompute(LossComputeBase):
     """
     Standard NMT Loss Computation.
     """
-    def __init__(self, generator, tgt_vocab, normalization="sents",
-                 label_smoothing=0.0, decoder_type='rnn'):
+    def __init__(
+        self, generator, tgt_vocab, normalization="sents",
+        label_smoothing=0.0, decoder_type='rnn'
+        ):
         super(NMTLossCompute, self).__init__(generator, tgt_vocab)
         assert (label_smoothing >= 0.0 and label_smoothing <= 1.0)
         self.decoder_type = decoder_type
@@ -235,8 +237,7 @@ def filter_shard_state(state, requires_grad=True, volatile=False):
     for k, v in state.items():
         if v is not None:
             if isinstance(v, Variable) and v.requires_grad:
-                v = Variable(v.data, requires_grad=requires_grad,
-                             volatile=volatile)
+                v = Variable(v.data, requires_grad=requires_grad, volatile=volatile)
             yield k, v
 
 
@@ -245,10 +246,10 @@ def shards(state, shard_size, eval=False, retain_graph=False):
     Args:
         state: A dictionary which corresponds to the output of
                *LossCompute._make_shard_state(). The values for
-               those keys are Tensor-like or None.
+                those keys are Tensor-like or None.
         shard_size: The maximum size of the shards yielded by the model.
         eval: If True, only yield the state, nothing else.
-              Otherwise, yield shards.
+                Otherwise, yield shards.
 
     Yields:
         Each yielded shard is a dict.
@@ -268,8 +269,7 @@ def shards(state, shard_size, eval=False, retain_graph=False):
         # want a sequence of dictionaries of tensors.
         # First, unzip the dictionary into a sequence of keys and a
         # sequence of tensor-like sequences.
-        keys, values = zip(*((k, torch.split(v, shard_size))
-                             for k, v in non_none.items()))
+        keys, values = zip(*((k, torch.split(v, shard_size)) for k, v in non_none.items()))
 
         # Now, yield a dictionary for each shard. The keys are always
         # the same. values is a sequence of length #keys where each
@@ -281,7 +281,6 @@ def shards(state, shard_size, eval=False, retain_graph=False):
             yield dict(zip(keys, shard_tensors))
 
         # Assumed backprop'd
-        variables = ((state[k], v.grad.data) for k, v in non_none.items()
-                     if isinstance(v, Variable) and v.grad is not None)
+        variables = ((state[k], v.grad.data) for k, v in non_none.items() if isinstance(v, Variable) and v.grad is not None)
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads, retain_graph=retain_graph)

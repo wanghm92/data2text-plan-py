@@ -17,23 +17,23 @@ class GlobalAttention(nn.Module):
 
     .. mermaid::
 
-       graph BT
-          A[Query]
-          subgraph RNN
+    graph BT
+        A[Query]
+        subgraph RNN
             C[H 1]
             D[H 2]
             E[H N]
-          end
-          F[Attn]
-          G[Output]
-          A --> F
-          C --> F
-          D --> F
-          E --> F
-          C -.-> G
-          D -.-> G
-          E -.-> G
-          F --> G
+        end
+        F[Attn]
+        G[Output]
+        A --> F
+        C --> F
+        D --> F
+        E --> F
+        C -.-> G
+        D -.-> G
+        E -.-> G
+        F --> G
 
     All models compute the output as
     :math:`c = \sum_{j=1}^{SeqLength} a_j H_j` where
@@ -53,9 +53,9 @@ class GlobalAttention(nn.Module):
 
 
     Args:
-       dim (int): dimensionality of query and key
-       coverage (bool): use coverage term
-       attn_type (str): type of attention to use, options [dot,general,mlp]
+        dim (int): dimensionality of query and key
+        coverage (bool): use coverage term
+        attn_type (str): type of attention to use, options [dot,general,mlp]
 
     """
     def __init__(self, dim, coverage=False, attn_type="dot"):
@@ -85,13 +85,13 @@ class GlobalAttention(nn.Module):
     def score(self, h_t, h_s):
         """
         Args:
-          h_t (`FloatTensor`): sequence of queries `[batch x tgt_len x dim]`
-          h_s (`FloatTensor`): sequence of sources `[batch x src_len x dim]`
+            h_t (`FloatTensor`): sequence of queries `[batch x tgt_len x dim]`
+            h_s (`FloatTensor`): sequence of sources `[batch x src_len x dim]`
 
         Returns:
-          :obj:`FloatTensor`:
-           raw attention scores (unnormalized) for each src index
-          `[batch x tgt_len x src_len]`
+            :obj:`FloatTensor`:
+            raw attention scores (unnormalized) for each src index
+            `[batch x tgt_len x src_len]`
 
         """
 
@@ -129,17 +129,17 @@ class GlobalAttention(nn.Module):
         """
 
         Args:
-          input (`FloatTensor`): query vectors `[batch x tgt_len x dim]`
-          memory_bank (`FloatTensor`): source vectors `[batch x src_len x dim]`
-          memory_lengths (`LongTensor`): the source context lengths `[batch]`
-          coverage (`FloatTensor`): None (not supported yet)
+            input (`FloatTensor`): query vectors `[batch x tgt_len x dim]`
+            memory_bank (`FloatTensor`): source vectors `[batch x src_len x dim]`
+            memory_lengths (`LongTensor`): the source context lengths `[batch]`
+            coverage (`FloatTensor`): None (not supported yet)
 
         Returns:
-          (`FloatTensor`, `FloatTensor`):
+            (`FloatTensor`, `FloatTensor`):
 
           * Computed vector `[tgt_len x batch x dim]`
           * Attention distribtutions for each query
-             `[tgt_len x batch x src_len]`
+                `[tgt_len x batch x src_len]`
         """
 
         # one step input

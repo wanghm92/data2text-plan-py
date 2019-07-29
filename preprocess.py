@@ -20,8 +20,7 @@ def check_existing_pt_files(opt):
     for t in ['train', 'valid', 'vocab']:
         pattern = opt.save_data + '.' + t + '*.pt'
         if glob.glob(pattern):
-            sys.stderr.write("Please backup exisiting pt file: %s, "
-                             "to avoid tampering!\n" % pattern)
+            sys.stderr.write("Please backup exisiting pt file: %s, to avoid tampering!\n" % pattern)
             sys.exit(1)
 
 
@@ -42,8 +41,10 @@ def parse_args():
 
     return opt
 
-def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, src_corpus2, tgt_corpus2, fields,
-                                      corpus_type, opt, pointers):
+def build_save_text_dataset_in_shards(
+    src_corpus, tgt_corpus, src_corpus2, tgt_corpus2, fields,
+    corpus_type, opt, pointers
+    ):
     '''
     Divide the big corpus into shards, and build dataset separately.
     This is currently only for data_type=='text'.
@@ -74,12 +75,12 @@ def build_save_text_dataset_in_shards(src_corpus, tgt_corpus, src_corpus2, tgt_c
     corpus_size = os.path.getsize(src_corpus)
     if corpus_size > 10 * (1024**2) and opt.max_shard_size == 0:
         print("Warning. The corpus %s is larger than 10M bytes, you can "
-              "set '-max_shard_size' to process it by small shards "
-              "to use less memory." % src_corpus)
+                "set '-max_shard_size' to process it by small shards "
+                "to use less memory." % src_corpus)
 
     if opt.max_shard_size != 0:
         print(' * divide corpus into shards and build dataset separately'
-              '(shard_size = %d bytes).' % opt.max_shard_size)
+                '(shard_size = %d bytes).' % opt.max_shard_size)
 
     ret_list = []
     src_iter = onmt.io.ShardedTextCorpusIterator(
@@ -171,12 +172,13 @@ def build_save_dataset(corpus_type, fields, opt):
 
 
 def build_save_vocab(train_dataset, fields, opt):
-    fields = onmt.io.build_vocab(train_dataset, fields, opt.data_type,
-                                 opt.share_vocab,
-                                 opt.src_vocab_size,
-                                 opt.src_words_min_frequency,
-                                 opt.tgt_vocab_size,
-                                 opt.tgt_words_min_frequency)
+    fields = onmt.io.build_vocab(
+        train_dataset, fields, opt.data_type,
+        opt.share_vocab,
+        opt.src_vocab_size,
+        opt.src_words_min_frequency,
+        opt.tgt_vocab_size,
+        opt.tgt_words_min_frequency)
 
     # Can't save fields, so remove/reconstruct at training time.
     vocab_file = opt.save_data + '.vocab.pt'

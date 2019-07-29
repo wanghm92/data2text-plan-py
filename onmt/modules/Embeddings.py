@@ -15,8 +15,8 @@ class PositionalEncoding(nn.Module):
     :cite:`DBLP:journals/corr/VaswaniSPUJGKP17`
 
     Args:
-       dropout (float): dropout parameter
-       dim (int): embedding size
+        dropout (float): dropout parameter
+        dim (int): embedding size
     """
 
     def __init__(self, dropout, dim, max_len=5000):
@@ -34,8 +34,7 @@ class PositionalEncoding(nn.Module):
         # We must wrap the self.pe in Variable to compute, not the other
         # way - unwrap emb(i.e. emb.data). Otherwise the computation
         # wouldn't be watched to build the compute graph.
-        emb = emb + Variable(self.pe[:emb.size(0), :1, :emb.size(2)]
-                             .expand_as(emb), requires_grad=False)
+        emb = emb + Variable(self.pe[:emb.size(0), :1, :emb.size(2)].expand_as(emb), requires_grad=False)
         emb = self.dropout(emb)
         return emb
 
@@ -51,22 +50,21 @@ class Embeddings(nn.Module):
 
     .. mermaid::
 
-       graph LR
-          A[Input]
-          C[Feature 1 Lookup]
-          A-->B[Word Lookup]
-          A-->C
-          A-->D[Feature N Lookup]
-          B-->E[MLP/Concat]
-          C-->E
-          D-->E
-          E-->F[Output]
+        graph LR
+            A[Input]
+            C[Feature 1 Lookup]
+            A-->B[Word Lookup]
+            A-->C
+            A-->D[Feature N Lookup]
+            B-->E[MLP/Concat]
+            C-->E
+            D-->E
+            E-->F[Output]
 
     Args:
         word_vec_size (int): size of the dictionary of embeddings.
         word_padding_idx (int): padding index for words in the embeddings.
-        feats_padding_idx (list of int): padding index for a list of features
-                                   in the embeddings.
+        feats_padding_idx (list of int): padding index for a list of features in the embeddings.
         word_vocab_size (int): size of dictionary of embeddings for words.
         feat_vocab_sizes ([int], optional): list of size of dictionary
                                     of embeddings for each feature.
@@ -82,16 +80,17 @@ class Embeddings(nn.Module):
                     `-feat_merge mlp`
         dropout (float): dropout probability.
     """
-    def __init__(self, word_vec_size,
-                 word_vocab_size,
-                 word_padding_idx,
-                 position_encoding=False,
-                 feat_merge="concat",
-                 feat_vec_exponent=0.7, feat_vec_size=-1,
-                 feat_padding_idx=[],
-                 feat_vocab_sizes=[],
-                 dropout=0,
-                 discard_word=False):
+    def __init__(
+        self, word_vec_size,
+        word_vocab_size,
+        word_padding_idx,
+        position_encoding=False,
+        feat_merge="concat",
+        feat_vec_exponent=0.7, feat_vec_size=-1,
+        feat_padding_idx=[],
+        feat_vocab_sizes=[],
+        dropout=0,
+        discard_word=False):
 
         self.word_padding_idx = word_padding_idx
 
@@ -107,8 +106,7 @@ class Embeddings(nn.Module):
         elif feat_vec_size > 0:
             feat_dims = [feat_vec_size] * len(feat_vocab_sizes)
         else:
-            feat_dims = [int(vocab ** feat_vec_exponent)
-                         for vocab in feat_vocab_sizes]
+            feat_dims = [int(vocab ** feat_vec_exponent) for vocab in feat_vocab_sizes]
         vocab_sizes.extend(feat_vocab_sizes)
         emb_dims.extend(feat_dims)
         pad_indices.extend(feat_padding_idx)
@@ -116,16 +114,15 @@ class Embeddings(nn.Module):
         # The embedding matrix look-up tables. The first look-up table
         # is for words. Subsequent ones are for features, if any exist.
         emb_params = zip(vocab_sizes, emb_dims, pad_indices)
-        embeddings = [nn.Embedding(vocab, dim, padding_idx=pad)
-                      for vocab, dim, pad in emb_params]
+        embeddings = [nn.Embedding(vocab, dim, padding_idx=pad) for vocab, dim, pad in emb_params]
+        #! lookup and merge (concat for mlp later)
         emb_luts = Elementwise(discard_word, feat_merge, embeddings)
 
         # The final output size of word + feature vectors. This can vary
         # from the word vector size if and only if features are defined.
         # This is the attribute you should access if you need to know
         # how big your embeddings are going to be.
-        self.embedding_size = (sum(emb_dims) if feat_merge == 'concat'
-                               else word_vec_size)
+        self.embedding_size = (sum(emb_dims) if feat_merge == 'concat' else word_vec_size)
 
         # The sequence of operations that converts the input sequence
         # into a sequence of embeddings. At minimum this consists of
@@ -172,8 +169,8 @@ class Embeddings(nn.Module):
         """Load in pretrained embeddings.
 
         Args:
-          emb_file (str) : path to torch serialized embeddings
-          fixed (bool) : if true, embeddings are not updated
+            emb_file (str) : path to torch serialized embeddings
+            fixed (bool) : if true, embeddings are not updated
         """
         if emb_file:
             pretrained = torch.load(emb_file)
@@ -193,6 +190,7 @@ class Embeddings(nn.Module):
         in_length, in_batch, nfeat = input.size()
         aeq(nfeat, len(self.emb_luts))
 
+        #! lookup and merge (e.g. concat, mlp)
         emb = self.make_embedding(input)
 
         out_length, out_batch, emb_size = emb.size()

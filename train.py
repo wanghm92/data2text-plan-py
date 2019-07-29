@@ -25,6 +25,12 @@ TODO:
 (1) add summary
 """
 
+program = os.path.basename(sys.argv[0])
+L = logging.getLogger(program)
+logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s')
+logging.root.setLevel(level=logging.INFO)
+L.info("Running %s" % ' '.join(sys.argv))
+
 parser = argparse.ArgumentParser(
     description='train.py',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -123,8 +129,7 @@ class DatasetLazyIter(object):
         is_train (bool): train or valid?
     """
 
-    def __init__(self, datasets, fields, batch_size, batch_size_fn,
-                 device, is_train):
+    def __init__(self, datasets, fields, batch_size, batch_size_fn, device, is_train):
         self.datasets = datasets
         self.fields = fields
         self.batch_size = batch_size
@@ -203,8 +208,7 @@ def make_dataset_iter(datasets, fields, opt, is_train=True):
 
     device = opt.gpuid[0] if opt.gpuid else -1
 
-    return DatasetLazyIter(datasets, fields, batch_size, batch_size_fn,
-                           device, is_train)
+    return DatasetLazyIter(datasets, fields, batch_size, batch_size_fn, device, is_train)
 
 
 def make_loss_compute(model, tgt_vocab, opt, stage1=True):
@@ -213,14 +217,15 @@ def make_loss_compute(model, tgt_vocab, opt, stage1=True):
     compute loss in train/validate process. You can implement your
     own *LossCompute class, by subclassing LossComputeBase.
     """
-    if not stage1:
-        compute = onmt.modules.CopyGeneratorLossCompute(
-            model.generator, tgt_vocab, opt.copy_attn_force,
-            opt.copy_loss_by_seqlength)
-    else:
+    if stage1:
         compute = onmt.Loss.NMTLossCompute(
             model.generator, tgt_vocab,
             label_smoothing=opt.label_smoothing, decoder_type=opt.decoder_type1)
+
+    else:
+        compute = onmt.modules.CopyGeneratorLossCompute(
+            model.generator, tgt_vocab, opt.copy_attn_force,
+            opt.copy_loss_by_seqlength)
 
     if use_gpu(opt):
         compute.cuda()
@@ -234,7 +239,7 @@ def train_model(model, model2, fields, optim, optim2, data_type, model_opt):
     train_loss2 = make_loss_compute(model2, fields["tgt2"].vocab, opt, stage1=False)
     valid_loss2 = make_loss_compute(model2, fields["tgt2"].vocab, opt, stage1=False)
 
-    trunc_size = opt.truncated_decoder  # Badly named...
+    trunc_size = opt.truncated_decoder
     shard_size = opt.max_generator_batches
     norm_method = opt.normalization
     grad_accum_count = opt.accum_count
@@ -243,38 +248,37 @@ def train_model(model, model2, fields, optim, optim2, data_type, model_opt):
     if opt.gpuid:
         cuda = True
 
-    trainer = onmt.Trainer(model, model2, train_loss, valid_loss, train_loss2, valid_loss2, optim, optim2,
-                           trunc_size, shard_size, data_type,
-                           norm_method, grad_accum_count, cuda)
+    #! 0. Declare Trainer
+    trainer = onmt.Trainer(
+        model, model2, train_loss, valid_loss, train_loss2, valid_loss2,
+        optim, optim2,
+        trunc_size, shard_size, data_type,
+        norm_method, grad_accum_count, cuda)
 
     print('\nStart training...')
-    print(' * number of epochs: %d, starting from Epoch %d' %
-          (opt.epochs + 1 - opt.start_epoch, opt.start_epoch))
+    print(' * number of epochs: %d, starting from Epoch %d' % (opt.epochs + 1 - opt.start_epoch, opt.start_epoch))
     print(' * batch size: %d' % opt.batch_size)
 
     for epoch in range(opt.start_epoch, opt.epochs + 1):
         print('')
 
-        # 1. Train for one epoch on the training set.
-        train_iter = make_dataset_iter(lazily_load_dataset("train"),
-                                       fields, opt)
+        #! 1. Train for one epoch on the training set
+        train_iter = make_dataset_iter(lazily_load_dataset("train"), fields, opt)
         train_stats, train_stats2 = trainer.train(train_iter, epoch, report_func)
         print('Train perplexity: %g' % train_stats.ppl())
         print('Train accuracy: %g' % train_stats.accuracy())
         print('Train perplexity2: %g' % train_stats2.ppl())
         print('Train accuracy2: %g' % train_stats2.accuracy())
 
-        # 2. Validate on the validation set.
-        valid_iter = make_dataset_iter(lazily_load_dataset("valid"),
-                                       fields, opt,
-                                       is_train=False)
+        #! 2. Validate on the validation set
+        valid_iter = make_dataset_iter(lazily_load_dataset("valid"), fields, opt, is_train=False)
         valid_stats, valid_stats2 = trainer.validate(valid_iter)
         print('Validation perplexity: %g' % valid_stats.ppl())
         print('Validation accuracy: %g' % valid_stats.accuracy())
         print('Validation perplexity2: %g' % valid_stats2.ppl())
         print('Validation accuracy2: %g' % valid_stats2.accuracy())
 
-        # 3. Log to remote server.
+        #! 3. Log to tensorboard
         if opt.exp_host:
             train_stats.log("train", experiment, optim.lr)
             valid_stats.log("valid", experiment, optim.lr)
@@ -284,12 +288,12 @@ def train_model(model, model2, fields, optim, optim2, data_type, model_opt):
             valid_stats.log_tensorboard("valid_1", writer, optim.lr, epoch)
             valid_stats2.log_tensorboard("valid_2", writer, optim.lr, epoch)
 
-        # 4. Update the learning rate
+        #! 4. Update the learning rate
         trainer.epoch_step(valid_stats.ppl(), valid_stats2.ppl(), epoch)
 
         # 5. Drop a checkpoint if needed.
-        if epoch >= opt.start_checkpoint_at:
-            trainer.drop_checkpoint(model_opt, epoch, fields, valid_stats, valid_stats2)
+        # if epoch >= opt.start_checkpoint_at:
+            # trainer.drop_checkpoint(model_opt, epoch, fields, valid_stats, valid_stats2)
 
 
 def check_save_model_path():
@@ -327,8 +331,7 @@ def lazily_load_dataset(corpus_type):
 
     def lazy_dataset_loader(pt_file, corpus_type):
         dataset = torch.load(pt_file)
-        print('Loading %s dataset from %s, number of examples: %d' %
-              (corpus_type, pt_file, len(dataset)))
+        print('Loading %s dataset from %s, number of examples: %d' % (corpus_type, pt_file, len(dataset)))
         return dataset
 
     # Sort the glob output by file name (by increasing indexes).
@@ -350,16 +353,13 @@ def load_fields(dataset, data_type, checkpoint):
     else:
         fields = onmt.io.load_fields_from_vocab(
             torch.load(opt.data + '.vocab.pt'), data_type)
-    fields = dict([(k, f) for (k, f) in fields.items()
-                   if k in dataset.examples[0].__dict__])
+    fields = dict([(k, f) for (k, f) in fields.items() if k in dataset.examples[0].__dict__])
 
     if data_type == 'text' or data_type == 'box':
-        print(' * vocabulary size. source1 = %d; target1 = %d, source2 = %d; target2 = %d' %
-              (len(fields['src1'].vocab), len(fields['tgt1'].vocab), len(fields['src2'].vocab), len(fields['tgt2'].vocab)))
+        print(' * vocabulary size. source1 = %d; target1 = %d, source2 = %d; target2 = %d' % (len(fields['src1'].vocab), len(fields['tgt1'].vocab), len(fields['src2'].vocab), len(fields['tgt2'].vocab)))
     else:
         assert False
-        print(' * vocabulary size. target = %d' %
-              (len(fields['tgt'].vocab)))
+        print(' * vocabulary size. target = %d' % (len(fields['tgt'].vocab)))
 
     return fields
 
@@ -377,16 +377,14 @@ def collect_report_features(fields):
 def build_model(model_opt, opt, fields, checkpoint):
     print('Building model...')
     # both are NMTModel
-    model1 = onmt.ModelConstructor.make_base_model(model_opt, fields,
-                                                  use_gpu(opt), checkpoint, stage1=True)
-    model2 = onmt.ModelConstructor.make_base_model(model_opt, fields,
-                                                   use_gpu(opt), checkpoint, stage1=False)
+    model1 = onmt.ModelConstructor.make_base_model(model_opt, fields, use_gpu(opt), checkpoint, stage1=True)
+    model2 = onmt.ModelConstructor.make_base_model(model_opt, fields, use_gpu(opt), checkpoint, stage1=False)
     if len(opt.gpuid) > 1:
         print('Multi gpu training: ', opt.gpuid)
         model1 = nn.DataParallel(model1, device_ids=opt.gpuid, dim=1)
         model2 = nn.DataParallel(model2, device_ids=opt.gpuid, dim=1)
-    print(model1)
-    print(model2)
+    L.info("model1: {}".format(model1))
+    L.info("model2: {}".format(model2))
 
     return model1, model2
 
@@ -418,7 +416,6 @@ def build_optim(model, checkpoint):
 def main():
     from pprint import pprint
     pprint(vars(opt))
-    print('Experiment 22-4.4 using attn_dim of 64')
     # Load checkpoint if we resume from a previous training.
     if opt.train_from:
         print('Loading checkpoint from %s' % opt.train_from)
@@ -431,27 +428,27 @@ def main():
         checkpoint = None
         model_opt = opt
 
-    # Peek the fisrt dataset to determine the data_type.
+    # Peek the first dataset to determine the data_type.
     # (All datasets have the same data_type).
     first_dataset = next(lazily_load_dataset("train"))
     data_type = first_dataset.data_type
 
-    # Load fields generated from preprocess phase.
+    #! Load fields generated from preprocess phase
     fields = load_fields(first_dataset, data_type, checkpoint)
 
     # Report src/tgt features.
     collect_report_features(fields)
-    # NOTE: build model.
+    #! build model
     model1, model2 = build_model(model_opt, opt, fields, checkpoint)
     tally_parameters(model1)
     tally_parameters(model2)
     check_save_model_path()
 
-    # NOTE: Build optimizer.
+    #! Build optimizer
     optim1 = build_optim(model1, checkpoint)
     optim2 = build_optim(model2, checkpoint)
 
-    # NOTE: Do training.
+    #! Do training
     train_model(model1, model2, fields, optim1, optim2, data_type, model_opt)
 
     # If using tensorboard for logging, close the writer after training.

@@ -80,12 +80,14 @@ class BoxField(RawField):
         torch.cuda.LongTensor: int
     }
 
-    def __init__(self, sequential=True, use_vocab=True, init_token=None,
-                 eos_token=None, fix_length=None, tensor_type=torch.LongTensor,
-                 preprocessing=None, postprocessing=None, lower=False,
-                 tokenize=(lambda s: s.split()), include_lengths=False,
-                 batch_first=False, pad_token="<pad>", unk_token="<unk>",
-                 pad_first=False):
+    def __init__(
+        self, sequential=True, use_vocab=True, init_token=None,
+        eos_token=None, fix_length=None, tensor_type=torch.LongTensor,
+        preprocessing=None, postprocessing=None, lower=False,
+        tokenize=(lambda s: s.split()), include_lengths=False,
+        batch_first=False, pad_token="<pad>", unk_token="<unk>",
+        pad_first=False
+        ):
         self.sequential = sequential
         self.use_vocab = use_vocab
         self.init_token = init_token
@@ -217,8 +219,8 @@ class BoxField(RawField):
         """
         if self.include_lengths and not isinstance(arr, tuple):
             raise ValueError("Field has include_lengths set to True, but "
-                             "input data is not a tuple of "
-                             "(data batch, batch lengths).")
+                                "input data is not a tuple of "
+                                "(data batch, batch lengths).")
         if isinstance(arr, tuple):
             arr, lengths = arr
             lengths = torch.LongTensor(lengths)
@@ -244,7 +246,7 @@ class BoxField(RawField):
             # to a numeric type.
             if not self.sequential:
                 arr = [numericalization_func(x) if isinstance(x, six.string_types)
-                       else x for x in arr]
+                        else x for x in arr]
             if self.postprocessing is not None:
                 arr = self.postprocessing(arr, None, train)
 

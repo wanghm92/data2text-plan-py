@@ -28,9 +28,9 @@ class CopyGenerator(nn.Module):
 
     * :math:`p_{softmax}` the standard softmax over `tgt_dict`
     * :math:`p(z)` the probability of instead copying a
-      word from the source, computed using a bernoulli
+        word from the source, computed using a bernoulli
     * :math:`p_{copy}` the probility of copying a word instead.
-      taken from the attention distribution directly.
+        taken from the attention distribution directly.
 
     The model returns a distribution over the extend dictionary,
     computed as
@@ -40,26 +40,26 @@ class CopyGenerator(nn.Module):
 
     .. mermaid::
 
-       graph BT
-          A[input]
-          S[src_map]
-          B[softmax]
-          BB[switch]
-          C[attn]
-          D[copy]
-          O[output]
-          A --> B
-          A --> BB
-          S --> D
-          C --> D
-          D --> O
-          B --> O
-          BB --> O
+        graph BT
+            A[input]
+            S[src_map]
+            B[softmax]
+            BB[switch]
+            C[attn]
+            D[copy]
+            O[output]
+            A --> B
+            A --> BB
+            S --> D
+            C --> D
+            D --> O
+            B --> O
+            BB --> O
 
 
     Args:
-       input_size (int): size of input representation
-       tgt_dict (Vocab): output target dictionary
+        input_size (int): size of input representation
+        tgt_dict (Vocab): output target dictionary
 
     """
     def __init__(self, input_size, tgt_dict):
@@ -75,12 +75,12 @@ class CopyGenerator(nn.Module):
         source words.
 
         Args:
-           hidden (`FloatTensor`): hidden outputs `[batch*tlen, input_size]`
-           attn (`FloatTensor`): attn for each `[batch*tlen, input_size]`
-           src_map (`FloatTensor`):
-             A sparse indicator matrix mapping each source word to
-             its index in the "extended" vocab containing.
-             `[src_len, batch, extra_words]`
+            hidden (`FloatTensor`): hidden outputs `[batch*tlen, input_size]`
+            attn (`FloatTensor`): attn for each `[batch*tlen, input_size]`
+            src_map (`FloatTensor`):
+                A sparse indicator matrix mapping each source word to
+                its index in the "extended" vocab containing.
+                `[src_len, batch, extra_words]`
         """
         # CHECKS
         # print("[CopyGenerator] src_map = {}".format(src_map[:, 0, :]))
@@ -113,9 +113,8 @@ class CopyGenerator(nn.Module):
         else:
             out_prob = torch.mul(prob,  1 - p_copy.expand_as(prob))
             mul_attn = torch.mul(attn, p_copy.expand_as(attn))
-        copy_prob = torch.bmm(mul_attn.view(-1, batch, slen)
-                              .transpose(0, 1),
-                              src_map.transpose(0, 1)).transpose(0, 1)
+        copy_prob = torch.bmm(mul_attn.view(-1, batch, slen).transpose(0, 1),
+                                src_map.transpose(0, 1)).transpose(0, 1)
         copy_prob = copy_prob.contiguous().view(-1, cvocab)
 
         return torch.cat([out_prob, copy_prob], 1), p_copy
@@ -182,9 +181,11 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
     """
     Copy Generator Loss Computation.
     """
-    def __init__(self, generator, tgt_vocab,
-                 force_copy, normalize_by_length,
-                 eps=1e-20):
+    def __init__(
+        self, generator, tgt_vocab,
+        force_copy, normalize_by_length,
+        eps=1e-20
+        ):
         super(CopyGeneratorLossCompute, self).__init__(
             generator, tgt_vocab)
 
@@ -200,8 +201,7 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
     def _make_shard_state(self, batch, output, range_, attns):
         """ See base class for args description. """
         if getattr(batch, "alignment", None) is None:
-            raise AssertionError("using -copy_attn you need to pass in "
-                                 "-dynamic_dict during preprocess stage.")
+            raise AssertionError("using -copy_attn you need to pass in -dynamic_dict during preprocess stage.")
 
         return {
             "output": output,

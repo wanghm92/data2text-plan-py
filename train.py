@@ -25,6 +25,7 @@ TODO:
 (1) add summary
 """
 
+import logging
 program = os.path.basename(sys.argv[0])
 L = logging.getLogger(program)
 logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s')

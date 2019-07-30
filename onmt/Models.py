@@ -348,7 +348,8 @@ class RNNDecoderBase(nn.Module):
             decoder_outputs = torch.stack(decoder_outputs)
 
         for k in attns:
-            attns[k] = torch.stack(attns[k])
+            if type(attns[k]) == list:
+                attns[k] = torch.stack(attns[k])
 
         return decoder_outputs, state, attns
 
@@ -739,7 +740,7 @@ class DecoderState(object):
     def detach(self):
         for h in self._all:
             if h is not None:
-                h.detach_()
+                h.detach()
 
     def beam_update(self, idx, positions, beam_size):
         for e in self._all:

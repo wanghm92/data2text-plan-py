@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-PY3=/home/hongmin_wang/anaconda2/envs/py36_tf19/bin/python
-BASE=/home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/new_dataset/new_ncpcc
+BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_inlg/inlg_data/new_ncpcc
 #IDENTIFIER=newcc-final
 IDENTIFIER=newcc-trl-1e-1
 
@@ -27,34 +26,34 @@ TEST_TGT2=$BASE/test/tgt_test.norm.filter.mwe.trim.txt
 wc $TEST_SRC1 $TEST_TGT1 $TEST_SRC2 $TEST_TGT2
 
 ###################################################################################################
-PREPRO=/home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/new_dataset/new_ncpcc/pt_data/$IDENTIFIER
+PREPRO=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_inlg/inlg_data/new_ncpcc/pt_data/$IDENTIFIER
 mkdir -p $PREPRO
 
-OUTPUT=/home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py/new_models/$IDENTIFIER
+OUTPUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/new_models/$IDENTIFIER
 mkdir -p $OUTPUT
 
-SUM_OUT=/home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py/new_outputs/$IDENTIFIER
+SUM_OUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/new_outputs/$IDENTIFIER
 mkdir -p $SUM_OUT
 
-VALID_DIR=/home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/new_dataset/new_ncpcc
+VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dataset/new_ncpcc
 
 ####################################################################################################
 #echo "run preprocessing"
 #python preprocess.py -train_src1 $TRAIN_SRC1 -train_tgt1 $TRAIN_TGT1 -train_src2 $TRAIN_SRC2 -train_tgt2 $TRAIN_TGT2 -valid_src1 $VALID_SRC1 -valid_tgt1 $VALID_TGT1 -valid_src2 $VALID_SRC2 -valid_tgt2 $VALID_TGT2 -save_data $PREPRO/roto-$IDENTIFIER -src_seq_length 1000 -tgt_seq_length 1000 -dynamic_dict -train_ptr $TRAIN_PTR
 #
 ####################################################################################################
-#echo "run training"
-#python train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events
+echo "run training"
+python train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events
 
 ###################################################################################################
-echo " ****** Evaluation ****** "
-for EPOCH in $(seq 19 19)
-do
-    for MODEL1 in $(ls $OUTPUT/roto_stage1*_e$EPOCH.pt)
-    do
+# echo " ****** Evaluation ****** "
+# for EPOCH in $(seq 19 19)
+# do
+#     for MODEL1 in $(ls $OUTPUT/roto_stage1*_e$EPOCH.pt)
+#     do
 
-        for MODEL2 in $(ls $OUTPUT/roto_stage2*_e$EPOCH.pt)
-        do
+#         for MODEL2 in $(ls $OUTPUT/roto_stage2*_e$EPOCH.pt)
+#         do
 
 #        echo "--"
 #        echo $MODEL1
@@ -74,19 +73,19 @@ do
 #        echo " ****** BLEU ****** "
 #        perl ~/onmt-tf-whm/third_party/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
 
-        cd /home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/evaluate
-        echo " ****** RG CS CO ****** "
+        # cd /mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/evaluate
+        # echo " ****** RG CS CO ****** "
 #        $PY3 evaluate.py --dataset valid --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
 
-        $PY3 make_human_eval.py \
-        --dataset valid \
-        --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.new.txt \
-        --template /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-my/new_rulebased.valid.txt \
-        --ws17 /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-harvard/outputs/new-roto-v2/new-roto-v2-beam5_gens.valid.24.txt \
-        --ent /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-entity-py/rotowire/outputs/clean_large/roto_clean_large-beam5_gens.valid.e19.txt \
-        --ncp /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py/new_outputs/newcc-final/roto_stage2_newcc-final.e18.valid.txt
+        # $PY3 make_human_eval.py \
+        # --dataset valid \
+        # --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.new.txt \
+        # --template /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-my/new_rulebased.valid.txt \
+        # --ws17 /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-harvard/outputs/new-roto-v2/new-roto-v2-beam5_gens.valid.24.txt \
+        # --ent /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-entity-py/rotowire/outputs/clean_large/roto_clean_large-beam5_gens.valid.e19.txt \
+        # --ncp /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/new_outputs/newcc-final/roto_stage2_newcc-final.e18.valid.txt
 
-        cd /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py
+        # cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
 
 #        echo "--"
 #        echo " ****** STAGE 1 ****** "
@@ -102,11 +101,11 @@ do
 #        echo " ****** BLEU ****** "
 #        perl ~/onmt-tf-whm/third_party/multi-bleu.perl $TEST_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.test.txt
 #
-#        cd /home/hongmin_wang/table2text_nlg/harvardnlp/boxscore-data/scripts/evaluate
+#        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/evaluate
 #        echo " ****** RG CS CO ****** "
 #        $PY3 evaluate.py --dataset test --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.test.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.test.txt
-#        cd /home/hongmin_wang/table2text_nlg/harvardnlp/data2text-plan-py
+#        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
 
-        done
-    done
-done
+#         done
+#     done
+# done

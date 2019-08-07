@@ -101,7 +101,7 @@ class BoxField(RawField):
         self.tokenize = get_tokenizer(tokenize)
         self.include_lengths = include_lengths
         self.batch_first = batch_first
-        self.pad_token = pad_token #if self.sequential else None
+        self.pad_token = pad_token #! [diff] if self.sequential else None
         self.pad_first = pad_first
 
     def preprocess(self, x):
@@ -155,12 +155,14 @@ class BoxField(RawField):
         padded, lengths = [], []
         for x in minibatch:
             if self.pad_first:
+                #! NOTE [diff] l#163 was: list(x[:max_len]) if self.truncate_first else x[:max_len]) +
                 padded.append(
                     [self.pad_token] * max(0, max_len - len(x)) +
                     ([] if self.init_token is None else [self.init_token]) +
                     list(x[:max_len]) +
                     ([] if self.eos_token is None else [self.eos_token]))
             else:
+                #! NOTE [diff] l#169 was: list(x[:max_len]) if self.truncate_first else x[:max_len]) +
                 padded.append(
                     ([] if self.init_token is None else [self.init_token]) +
                     list(x[:max_len]) +
@@ -229,6 +231,7 @@ class BoxField(RawField):
             if self.sequential:
                 arr = [[self.vocab.stoi[x] for x in ex] for ex in arr]
             else:
+                #! NOTE [diff] the following line was: arr = [self.vocab.stoi[x] for x in arr]
                 arr = [[self.vocab.stoi[x] for x in ex ] for ex in arr]
 
             if self.postprocessing is not None:
@@ -251,7 +254,9 @@ class BoxField(RawField):
                 arr = self.postprocessing(arr, None, train)
 
         arr = self.tensor_type(arr)
-        if not self.batch_first:    #applies to both sequential and non-sequential
+        # ! NOTE [diff] applies to both sequential and non-sequential
+        # ! NOTE [diff] the following line was: if self.sequential and not self.batch_first:
+        if not self.batch_first:
             arr.t_()
         if device == -1:
             if self.sequential:

@@ -248,15 +248,15 @@ class Trainer(object):
                             zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
 
-            trimmed_table_embs = None
+            trimmed_tbl_embs = None
             if enc_embs is not None:
                 table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(enc_embs, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
-                trimmed_table_embs = torch.transpose(torch.cat(table_select), 0, 1)
+                trimmed_tbl_embs = torch.transpose(torch.cat(table_select), 0, 1)
 
             _, src_lengths = batch.src2
             tgt = onmt.io.make_features(batch, 'tgt2')
             # F-prop through the model.
-            outputs, attns, _, _ = self.model2((emb, trimmed_table_embs), tgt, src_lengths)
+            outputs, attns, _, _ = self.model2((emb, trimmed_tbl_embs), tgt, src_lengths)
             # Compute loss.
             batch_stats = self.valid_loss2.monolithic_compute_loss(
                 batch, outputs, attns, stage1=False)
@@ -332,7 +332,7 @@ class Trainer(object):
             assert False
             self.model.zero_grad()
 
-        enc_embs = None
+        tbl_emb = None
         for batch in true_batchs:
             #! Stage 1
             target_size = batch.tgt1.size(0)
@@ -345,6 +345,13 @@ class Trainer(object):
             self.tt = torch.cuda if self.cuda else torch
             src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
 
+            # TODO: get lengths here for number of edges in the graph
+            # TODO: edge labels are not used yet
+            edges = None
+            if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
+                edge_labels = batch.edge_labels if 'edge_labels' in batch.fields else None
+                edges = (batch.edge_left, batch.edge_right, batch.edge_labels)
+
             for j in range(0, target_size-1, trunc_size):
                 #setting to value of tgt_planning
                 tgt = batch.tgt1_planning[j: j + trunc_size].unsqueeze(2)
@@ -352,9 +359,9 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
-                outputs, attns, dec_state, memory_bank = self.model(src, tgt, src_lengths, dec_state)
+                outputs, attns, dec_state, memory_bank = self.model((src, None, edges), tgt, src_lengths, dec_state)
                 if isinstance(memory_bank, tuple):
-                    memory_bank, enc_embs = memory_bank
+                    memory_bank, tbl_emb = memory_bank
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
@@ -384,10 +391,10 @@ class Trainer(object):
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
 
-            trimmed_table_embs = None
-            if enc_embs is not None:
-                table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in  zip(torch.transpose(enc_embs, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
-                trimmed_table_embs = torch.transpose(torch.cat(table_select), 0, 1)
+            trimmed_tbl_emb = None
+            if tbl_emb is not None:
+                table_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in  zip(torch.transpose(tbl_emb, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+                trimmed_tbl_emb = torch.transpose(torch.cat(table_select), 0, 1)
 
             if self.data_type == 'text':
                 tgt_outer = onmt.io.make_features(batch, 'tgt2')
@@ -398,7 +405,7 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model2.zero_grad()
-                outputs, attns, dec_state, _ = self.model2((emb, trimmed_table_embs), tgt, src_lengths, dec_state)
+                outputs, attns, dec_state, _ = self.model2((emb, trimmed_tbl_emb, None), tgt, src_lengths, dec_state)
 
                 # retain_graph is false for the final truncation
                 retain_graph = (j + trunc_size) < (target_size - 1)

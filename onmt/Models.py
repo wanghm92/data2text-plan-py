@@ -9,6 +9,8 @@ from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
 import onmt
 from onmt.Utils import aeq
+from torch_geometric.data import Data, Batch
+from torch_geometric.nn import GCNConv
 
 
 def rnn_factory(rnn_type, **kwargs):
@@ -82,7 +84,7 @@ class MeanEncoder(EncoderBase):
         self.num_layers = num_layers
         self.table_embeddings = None
         if isinstance(embeddings, tuple):
-            embeddings, table_embeddings = embeddings
+            embeddings, table_embeddings, _ = embeddings
             self.table_embeddings = table_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
@@ -90,14 +92,68 @@ class MeanEncoder(EncoderBase):
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
         "See :obj:`EncoderBase.forward()`"
+        if isinstance(src, tuple):
+            src, _ = src
         self._check_args(src, lengths, encoder_state)
 
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
-        tbl_emb = self.table_embeddings(src)
+        tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch, emb_dim = emb.size()
         decoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 
         mean = decoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
+        memory_bank = decoder_output
+        encoder_final = (mean, mean)
+        return encoder_final, (memory_bank, tbl_emb)
+
+
+class GraphEncoder(EncoderBase):
+    """
+    Arguments:
+        EncoderBase {[type]} -- [description]
+    Returns:
+        [type] -- [description]
+    """
+    def __init__(self, num_layers, embeddings, emb_size, attn_hidden, dropout=0.0, attn_type="general", coverage_attn=False):
+        super(GraphEncoder, self).__init__()
+        self.num_layers = num_layers
+        embeddings, table_embeddings, edge_embeddings = embeddings
+        self.table_embeddings = table_embeddings
+        self.edge_embeddings = edge_embeddings
+        self.embeddings = embeddings
+        self.dropout = nn.Dropout(p=dropout)
+        self.conv = GCNConv(600, 600)  # TODO: define dimensions here
+
+    def _construct_data_list(self, edge_left, edge_right, emb):
+        # src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
+        # TODO: get lengths and truncate left and right edges
+        data_list = []
+        for left, right, x in \
+                zip(torch.split(edge_left, 1, dim=1), torch.split(edge_right, 1, dim=1), torch.split(emb, 1, dim=1)):
+            edge_index = torch.cat([left, right], dim=1).t().contiguous()
+            x = x.squeeze(1)
+            data = Data(x=x, edge_index=edge_index)
+            data_list.append(data)
+        return data_list
+
+    def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
+        "See :obj:`EncoderBase.forward()`"
+        src, edges = src
+        self._check_args(src, lengths, encoder_state)
+        emb = self.dropout(self.embeddings(src))  # src: word/feature ids
+        tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
+        s_len, batch_size, emb_dim = emb.size()
+
+        if edges is None:
+            raise ValueError('edges cannot be None for GraphEncoder')
+        edge_left, edge_right, edge_labels = edges
+
+        data_list = self._construct_data_list(edge_left, edge_right, emb)
+        graph_batch = Batch.from_data_list(data_list)
+        decoder_output = self.conv(graph_batch.x, graph_batch.edge_index)
+        decoder_output = decoder_output.reshape(emb.size())
+
+        mean = decoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
         memory_bank = decoder_output
         encoder_final = (mean, mean)
         return encoder_final, (memory_bank, tbl_emb)
@@ -144,6 +200,8 @@ class RNNEncoder(EncoderBase):
 
     def forward(self, src, lengths=None, encoder_state=None):
         "See :obj:`EncoderBase.forward()`"
+        if isinstance(src, tuple):
+            src, _ = src
         self._check_args(src, lengths, encoder_state)
 
         emb = src
@@ -193,7 +251,6 @@ class RNNEncoder(EncoderBase):
         else:
             outs = bottle_hidden(self.bridge[0], hidden)
         return outs
-
 
 
 class RNNDecoderBase(nn.Module):
@@ -321,9 +378,9 @@ class RNNDecoderBase(nn.Module):
                         `[tgt_len x batch x src_len]`.
         """
         # Check
-        trimmed_table_embs = None
+        trimmed_tbl_embs = None
         if isinstance(memory_bank, tuple):
-            memory_bank, trimmed_table_embs = memory_bank
+            memory_bank, trimmed_tbl_embs = memory_bank
 
         assert isinstance(state, RNNDecoderState)
         tgt_len, tgt_batch, _ = tgt.size()
@@ -333,7 +390,7 @@ class RNNDecoderBase(nn.Module):
 
         # Run the forward pass of the RNN.
         decoder_final, decoder_outputs, attns = self._run_forward_pass(
-            tgt, (memory_bank, trimmed_table_embs), state, memory_lengths=memory_lengths)
+            tgt, (memory_bank, trimmed_tbl_embs), state, memory_lengths=memory_lengths)
 
         if decoder_outputs is None:
             final_output = None
@@ -574,9 +631,9 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
         """
-        trimmed_table_embs = None
+        trimmed_tbl_embs = None
         if isinstance(memory_bank, tuple):
-            memory_bank, trimmed_table_embs = memory_bank
+            memory_bank, trimmed_tbl_embs = memory_bank
 
         # Additional args check.
         input_feed = state.input_feed.squeeze(0)
@@ -592,7 +649,7 @@ class InputFeedRNNDecoder(RNNDecoderBase):
             attns["copy"] = []
         if self._coverage:
             attns["coverage"] = []
-        if trimmed_table_embs is not None:
+        if trimmed_tbl_embs is not None:
             attns["table"] = []
 
         emb = self.embeddings(tgt)
@@ -614,10 +671,10 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                 memory_bank.transpose(0, 1),
                 memory_lengths=memory_lengths)
 
-            if trimmed_table_embs is not None:
+            if trimmed_tbl_embs is not None:
                 _, table_attn = self.table_attn(
                     rnn_output,
-                    trimmed_table_embs.transpose(0, 1),
+                    trimmed_tbl_embs.transpose(0, 1),
                     memory_lengths=memory_lengths)
                 attns["table"] += [table_attn]
 
@@ -674,7 +731,7 @@ class NMTModel(nn.Module):
     Args:
         encoder (:obj:`EncoderBase`): an encoder object
         decoder (:obj:`RNNDecoderBase`): a decoder object
-        multi<gpu (bool): setup for multigpu support
+        multigpu (bool): setup for multigpu support
     """
     def __init__(self, encoder, decoder, multigpu=False):
         self.multigpu = multigpu
@@ -703,13 +760,17 @@ class NMTModel(nn.Module):
                  * dictionary attention dists of `[tgt_len x batch x src_len]`
                  * final decoder state
         """
-        tgt = tgt[:-1]  #! exclude last target from inputs
+        #! NOTE: src is indices for stage1 and vectors for stage2
 
-        trimmed_table_embs = None
+        tgt = tgt[:-1]  #! NOTE: exclude last target from inputs
+
+        trimmed_tbl_embs = None
+        edges = None
         if isinstance(src, tuple):
-            src, trimmed_table_embs = src
+            src, trimmed_tbl_embs, edges = src
 
-        enc_final, memory_bank = self.encoder(src, lengths)
+        # TODO: pass edges to encoder
+        enc_final, memory_bank = self.encoder((src, edges), lengths)
 
         enc_embs = None
         if isinstance(memory_bank, tuple):
@@ -718,7 +779,7 @@ class NMTModel(nn.Module):
         enc_state = self.decoder.init_decoder_state(src, memory_bank, enc_final)
 
         decoder_outputs, dec_state, attns = \
-            self.decoder(tgt, (memory_bank, trimmed_table_embs),
+            self.decoder(tgt, (memory_bank, trimmed_tbl_embs),
                             enc_state if dec_state is None
                             else dec_state,
                             memory_lengths=lengths)

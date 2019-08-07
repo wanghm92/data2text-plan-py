@@ -79,7 +79,9 @@ def main():
         window_size=opt.window_size,
         window_stride=opt.window_stride,
         window=opt.window,
-        use_filter_pred=False)
+        use_filter_pred=False,
+        edge_file=opt.edges
+    )
 
     def sort_minibatch_key(ex):
         """ Sort using length of source sentences and length of target sentence """

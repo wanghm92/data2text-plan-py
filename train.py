@@ -20,11 +20,6 @@ import onmt.modules
 from onmt.Utils import use_gpu
 import opts
 
-"""
-TODO:
-(1) add summary
-"""
-
 import logging
 program = os.path.basename(sys.argv[0])
 L = logging.getLogger(program)
@@ -224,9 +219,14 @@ def make_loss_compute(model, tgt_vocab, opt, stage1=True):
             label_smoothing=opt.label_smoothing, decoder_type=opt.decoder_type1)
 
     else:
-        compute = onmt.modules.CopyGeneratorLossCompute(
-            model.generator, tgt_vocab, opt.copy_attn_force,
-            opt.copy_loss_by_seqlength)
+        if opt.trl:
+            compute = onmt.modules.CopyGeneratorLossComputeV2(
+                model.generator, tgt_vocab, opt.copy_attn_force,
+                opt.copy_loss_by_seqlength)
+        else:
+            compute = onmt.modules.CopyGeneratorLossCompute(
+                model.generator, tgt_vocab, opt.copy_attn_force,
+                opt.copy_loss_by_seqlength)
 
     if use_gpu(opt):
         compute.cuda()
@@ -434,8 +434,9 @@ def main():
     first_dataset = next(lazily_load_dataset("train"))
     data_type = first_dataset.data_type
 
-    #! Load fields generated from preprocess phase
+    #! NOTE: Load fields generated from preprocess phase
     fields = load_fields(first_dataset, data_type, checkpoint)
+    print('fields: {}'.format(fields.keys()))
 
     # Report src/tgt features.
     collect_report_features(fields)

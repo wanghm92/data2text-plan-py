@@ -6,7 +6,7 @@ from onmt.modules.PointerAttention import PointerAttention
 from onmt.modules.ConvMultiStepAttention import ConvMultiStepAttention
 from onmt.modules.ImageEncoder import ImageEncoder
 from onmt.modules.AudioEncoder import AudioEncoder
-from onmt.modules.CopyGenerator import CopyGenerator, CopyGeneratorLossCompute
+from onmt.modules.CopyGenerator import CopyGenerator, CopyGeneratorLossCompute, CopyGeneratorLossComputeV2
 from onmt.modules.StructuredAttention import MatrixTree
 from onmt.modules.Transformer import \
    TransformerEncoder, TransformerDecoder, PositionwiseFeedForward

@@ -11,7 +11,7 @@ from onmt.io.DatasetBase import UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD
 from onmt.io.TextDataset import TextDataset
 from onmt.io.ImageDataset import ImageDataset
 from onmt.io.AudioDataset import AudioDataset
-
+from tqdm import tqdm
 
 def _getstate(self):
     return dict(self.__dict__, stoi=dict(self.stoi))
@@ -168,16 +168,18 @@ def collect_feature_vocabs(fields, side):
         feature_vocabs.append(fields[key].vocab)
     return feature_vocabs
 
-
+# for translate
 def build_dataset(fields, data_type, src_path, tgt_path, src_path2, tgt_path2, src_dir=None,
                   src_seq_length=0, tgt_seq_length=0,
                   src_seq_length_trunc=0, tgt_seq_length_trunc=0,
                   dynamic_dict=True, sample_rate=0,
                   window_size=0, window_stride=0, window=None,
-                  normalize_audio=True, use_filter_pred=True):
+                  normalize_audio=True, use_filter_pred=True,
+                  edge_file=None):
 
     # Build src/tgt examples iterator from corpus files, also extract
     # number of features.
+    #! NOTE: building iterators using essentially the same APIs for text
     src_examples_iter, num_src_feats = \
         _make_examples_nfeats_tpl(data_type, src_path, src_dir,
                                   src_seq_length_trunc, sample_rate,
@@ -198,13 +200,17 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_path2, tgt_path2, s
         TextDataset.make_text_examples_nfeats_tpl(
             tgt_path2, tgt_seq_length_trunc, "tgt2")
 
+    #! NOTE building dataset
     if data_type == 'text':
         dataset = TextDataset(fields, src_examples_iter, tgt_examples_iter, src_examples_iter2, tgt_examples_iter2,
                               num_src_feats, num_tgt_feats,
                               src_seq_length=src_seq_length,
                               tgt_seq_length=tgt_seq_length,
                               dynamic_dict=dynamic_dict,
-                              use_filter_pred=use_filter_pred)
+                              use_filter_pred=use_filter_pred,
+                              edge_file=edge_file)
+    '''
+    # temporarily not used 
     elif data_type == 'img':
         dataset = ImageDataset(fields, src_examples_iter, tgt_examples_iter,
                                num_src_feats, num_tgt_feats,
@@ -221,7 +227,7 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_path2, tgt_path2, s
                                window=window,
                                normalize_audio=normalize_audio,
                                use_filter_pred=use_filter_pred)
-
+    '''
     return dataset
 
 
@@ -252,17 +258,17 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
     Returns:
         Dict of Fields
     """
-
     counter = {}
     for k in fields:
         counter[k] = Counter()
 
     for path in train_dataset_files:
         dataset = torch.load(path)
-        print(" * reloading %s." % path)
-        for ex in dataset.examples:
+        print(" * reloading %s and build counters" % path)
+        for ex in tqdm(dataset.examples):
             for k in fields:
                 val = getattr(ex, k, None)
+                # TODO: come back here to update he keys
                 if val is not None and k in ('indices', 'src_map', 'alignment'):
                     val = [val]
                 counter[k].update(val)
@@ -280,6 +286,13 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
             key = tgt+"_feat_" + str(j)
             _build_field_vocab(fields[key], counter[key])
             print(" * %s vocab size: %d." % (key, len(fields[key].vocab)))
+
+    if "edge_labels" in fields:
+        _build_field_vocab(fields["edge_labels"], counter["edge_labels"],
+                           max_size=tgt_vocab_size,
+                           min_freq=tgt_words_min_frequency)
+        print(" * edge_labels vocab size: {}.".format(len(fields["edge_labels"].vocab)))
+        print(" * edge_labels vocab: {}".format(fields["edge_labels"].vocab.stoi))
 
     if data_type == 'text':
         for src in ("src1", "src2"):

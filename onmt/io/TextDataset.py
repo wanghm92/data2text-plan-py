@@ -11,9 +11,9 @@ import torchtext
 
 from onmt.Utils import aeq
 from onmt.io.BoxField import BoxField
-from onmt.io.DatasetBase import (ONMTDatasetBase, UNK_WORD,
-                                 PAD_WORD, BOS_WORD, EOS_WORD)
-
+from onmt.io.DatasetBase import (ONMTDatasetBase, UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD)
+import jsonlines, traceback, os
+from tqdm import tqdm
 PAD_INDEX = 1
 BOS_INDEX = 2
 EOS_INDEX = 3
@@ -39,10 +39,12 @@ class TextDataset(ONMTDatasetBase):
             use_filter_pred (bool): use a custom filter predicate to filter
                 out examples?
     """
-    def __init__(self, fields, src_examples_iter, tgt_examples_iter, src2_examples_iter, tgt2_examples_iter,
-                 num_src_feats=0, num_tgt_feats=0, num_src_feats2=0, num_tgt_feats2=0,
-                 src_seq_length=0, tgt_seq_length=0,
-                 dynamic_dict=True, use_filter_pred=True, pointers_file=None):
+    def __init__(
+        self, fields, src_examples_iter, tgt_examples_iter, src2_examples_iter, tgt2_examples_iter,
+        num_src_feats=0, num_tgt_feats=0, num_src_feats2=0, num_tgt_feats2=0,
+        src_seq_length=0, tgt_seq_length=0,
+        dynamic_dict=True, use_filter_pred=True, pointers_file=None, edge_file=None
+        ):
         self.data_type = 'text'
 
         # self.src_vocabs: mutated in dynamic_dict, used in
@@ -61,25 +63,32 @@ class TextDataset(ONMTDatasetBase):
                 content = f.readlines()
             pointers = [x.strip() for x in content]
 
+        if edge_file is not None:
+            with jsonlines.open(edge_file, 'r') as f:
+                edges = [i for i in f.iter(type=dict, skip_invalid=True)]
+
+        # dictionaries are joint together
         if tgt2_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt, src2, tgt2) for src, tgt, src2, tgt2 in
-                             zip(src_examples_iter, tgt_examples_iter, src2_examples_iter, tgt2_examples_iter))
+                                zip(src_examples_iter, tgt_examples_iter, src2_examples_iter, tgt2_examples_iter))
         elif src2_examples_iter is not None:
             examples_iter = (self._join_dicts(src, tgt, src2) for src, tgt, src2 in
-                             zip(src_examples_iter, tgt_examples_iter, src2_examples_iter))
+                                zip(src_examples_iter, tgt_examples_iter, src2_examples_iter))
         else:
             examples_iter = src_examples_iter
 
         if dynamic_dict and src2_examples_iter is not None:
-            examples_iter = self._dynamic_dict(examples_iter, pointers)
+            # additional field keys are added
+            examples_iter = self._dynamic_dict(examples_iter, pointers=pointers, edges=edges)
 
         # Peek at the first to see which fields are used.
         ex, examples_iter = self._peek(examples_iter)
         keys = ex.keys()
 
-        out_fields = [(k, fields[k]) if k in fields else (k, None)
-                      for k in keys]
+        # pair with corresponding field objects
+        out_fields = [(k, fields[k]) if k in fields else (k, None) for k in keys]
 
+        # convert dict to lists
         example_values = ([ex[k] for k in keys] for ex in examples_iter)
 
         # If out_examples is a generator, we need to save the filter_pred
@@ -88,20 +97,20 @@ class TextDataset(ONMTDatasetBase):
         src_size = 0
 
         out_examples = []
-        for ex_values in example_values:
+        print("construct_example_fromlist ...")
+        for ex_values in tqdm(example_values):
             example = self._construct_example_fromlist(
                 ex_values, out_fields)
             src_size += len(example.src1)
             out_examples.append(example)
 
-        print("average src size", src_size / len(out_examples),
-              len(out_examples))
+        print("average src size", src_size / len(out_examples), len(out_examples))
 
         def filter_pred(example):
 
             return 0 < len(example.src1) <= src_seq_length \
-               and 0 < len(example.tgt1) <= tgt_seq_length \
-                   and (pointers_file is None or 1 < example.ptrs.size(0))
+                and 0 < len(example.tgt1) <= tgt_seq_length \
+                    and (pointers_file is None or 1 < example.ptrs.size(0))
 
         filter_pred = filter_pred if use_filter_pred else lambda x: True
 
@@ -210,6 +219,7 @@ class TextDataset(ONMTDatasetBase):
         """
         fields = {}
 
+        #! NOTE: sequential=False --> assumed to be the same size and no padding
         fields["src1"] = BoxField(
             sequential=False,
             init_token=BOS_WORD,
@@ -220,6 +230,21 @@ class TextDataset(ONMTDatasetBase):
             fields["src1_feat_" + str(j)] = \
                 BoxField(sequential=False, pad_token=PAD_WORD)
 
+        # TODO: get the actual lengths (number of valid edges) on the fly and truncate the indices vectors
+        # before repacking as pyg data objects
+        fields["edge_labels"] = BoxField(
+            pad_token=PAD_WORD
+        )
+        fields["edge_left"] = BoxField(
+            use_vocab=False,
+            pad_token=PAD_INDEX
+        )
+        fields["edge_right"] = BoxField(
+            use_vocab=False,
+            pad_token=PAD_INDEX
+        )
+
+        #! NOTE BOS_INDEX, EOS_INDEX, PAD_INDEX are prepend/appended to the planning sequence
         fields["tgt1_planning"] = BoxField(
             use_vocab=False,
             init_token=BOS_INDEX,
@@ -232,8 +257,7 @@ class TextDataset(ONMTDatasetBase):
 
         for j in range(n_tgt_features):
             fields["tgt1_feat_"+str(j)] = \
-                torchtext.data.Field(init_token=BOS_WORD, eos_token=EOS_WORD,
-                                     pad_token=PAD_WORD)
+                torchtext.data.Field(init_token=BOS_WORD, eos_token=EOS_WORD, pad_token=PAD_WORD)
 
         fields["src2"] = torchtext.data.Field(
             pad_token = PAD_WORD,
@@ -248,7 +272,7 @@ class TextDataset(ONMTDatasetBase):
             pad_token=PAD_WORD)
 
         def make_src(data, vocab, is_train):
-
+            #! NOTE vocab is None since use_vocab=False
             src_size = max([t.size(0) for t in data])
             src_vocab_size = max([t.max() for t in data]) + 1
             alignment = torch.zeros(src_size, len(data), src_vocab_size)
@@ -262,6 +286,7 @@ class TextDataset(ONMTDatasetBase):
             postprocessing=make_src, sequential=False)
 
         def make_tgt(data, vocab, is_train):
+            #! NOTE vocab is None since use_vocab=False
             tgt_size = max([t.size(0) for t in data])
             alignment = torch.zeros(tgt_size, len(data)).long()
             for i, sent in enumerate(data):
@@ -273,16 +298,17 @@ class TextDataset(ONMTDatasetBase):
             postprocessing=make_tgt, sequential=False)
 
         def make_pointer(data, vocab, is_train):
+            #! NOTE vocab is None since use_vocab=False
             if is_train:
                 src_size = max([t[-2][0] for t in data])
                 tgt_size = max([t[-1][0] for t in data])
-                #format of data is tgt_len, batch, src_len
-                alignment = torch.zeros(tgt_size+2, len(data), src_size).long()  #+2 for bos and eos
+                #! NOTE: format of data is tgt_len, batch, src_len
+                alignment = torch.zeros(tgt_size+2, len(data), src_size).long()  #! NOTE: +2 for bos and eos
                 for i, sent in enumerate(data):
-                    for j, t in enumerate(sent[:-2]):   #only iterate till the third-last row
-                        # as the last two rows contains lengths of src and tgt
-                        for k in range(1,t[t.size(0)-1]):   #iterate from index 1 as index 0 is tgt position
-                            alignment[t[0]+1][i][t[k]] = 1  #+1 to accommodate bos
+                    for j, t in enumerate(sent[:-2]):
+                        #! NOTE: only iterate till the 3rd last row as the last 2 rows contains lengths of src and tgt
+                        for k in range(1,t[t.size(0)-1]):   #! NOTE: iterate from index 1 as index 0 is tgt position
+                            alignment[t[0]+1][i][t[k]] = 1  #! NOTE: +1 to accommodate bos
                 return alignment
             else:
                 return torch.zeros(50, 5, 602).long()
@@ -319,29 +345,28 @@ class TextDataset(ONMTDatasetBase):
         return num_feats
 
     # Below are helper functions for intra-class use only.
-    def _dynamic_dict(self, examples_iter, pointers=None):
+    def _dynamic_dict(self, examples_iter, pointers=None, edges=None):
         loop_index = -1
         for example in examples_iter:
-            src = example["src2"]
+            src = example["src2"]  #! NOTE: ratish's content plan contains unique records
             loop_index += 1
-            src_vocab = torchtext.vocab.Vocab(Counter(src),
-                                              specials=[UNK_WORD, PAD_WORD])
+            src_vocab = torchtext.vocab.Vocab(Counter(src), specials=[UNK_WORD, PAD_WORD])
             self.src_vocabs.append(src_vocab)
             # Mapping source tokens to indices in the dynamic dict.
             src_map = torch.LongTensor([src_vocab.stoi[w] for w in src])
             example["src_map"] = src_map
-
             if "tgt2" in example:
                 tgt = example["tgt2"]
                 mask = torch.LongTensor(
-                    [0] + [src_vocab.stoi[w] for w in tgt] + [0])
+                    [0] + [src_vocab.stoi[w] for w in tgt] + [0])  # 0 for unk
                 example["alignment"] = mask
 
-                if pointers is not None:
+                if pointers is not None and loop_index < len(pointers):
                     pointer_entries = pointers[loop_index].split()
                     pointer_entries = [int(entry.split(",")[0]) for entry in pointer_entries]
+                    #! NOTE: overriding the mask above
                     mask = torch.LongTensor([0] + [src_vocab.stoi[w] if i in pointer_entries
-                                                   else src_vocab.stoi[UNK_WORD] for i, w in enumerate(tgt)] + [0])
+                                                    else src_vocab.stoi[UNK_WORD] for i, w in enumerate(tgt)] + [0])
                     example["alignment"] = mask
                     max_len = 0
                     line_tuples = []
@@ -361,6 +386,25 @@ class TextDataset(ONMTDatasetBase):
                     example["ptrs"] = ptrs
                 else:
                     example["ptrs"] = None
+
+                #! NOTE: edges are added here
+                if edges is not None:
+                    edge_left = []
+                    edge_right = []
+                    edge_labels = []
+                    for k, v in edges[loop_index].items():
+                        left, right = k.split(',')
+                        edge_left.append(int(left))
+                        edge_right.append(int(right))
+                        edge_labels.append(v)
+                    example["edge_left"] = torch.LongTensor(edge_left)
+                    example["edge_right"] = torch.LongTensor(edge_right)
+                    example["edge_labels"] = edge_labels
+                else:
+                    example["edge_left"] = None
+                    example["edge_right"] = None
+                    example["edge_labels"] = None
+
             yield example
 
 
@@ -373,8 +417,7 @@ class ShardedTextCorpusIterator(object):
     shards of size `shard_size`. Then, for each shard, it processes
     into (example_dict, n_features) tuples when iterates.
     """
-    def __init__(self, corpus_path, line_truncate, side, shard_size,
-                 assoc_iter=None):
+    def __init__(self, corpus_path, line_truncate, side, shard_size, assoc_iter=None):
         """
         Args:
             corpus_path: the corpus file path.
@@ -392,7 +435,7 @@ class ShardedTextCorpusIterator(object):
         except IOError:
             sys.stderr.write("Failed to open corpus file: %s" % corpus_path)
             sys.exit(1)
-
+        self.corpus_path = corpus_path
         self.line_truncate = line_truncate
         self.side = side
         self.shard_size = shard_size
@@ -413,14 +456,19 @@ class ShardedTextCorpusIterator(object):
             # util we run parallel with it.
             while self.line_index < self.assoc_iter.line_index:
                 line = self.corpus.readline()
-                if line == '':
-                    raise AssertionError(
-                        "Two corpuses must have same number of lines!")
-
                 self.line_index += 1
                 iteration_index += 1
+                if line == '':
+                    self.eof = True
+                    self.corpus.close()
+                    print("[up] Reached end of file {} iteration_index = {}"
+                          .format(os.path.basename(self.corpus_path), iteration_index))
+                    break
+                    # raise AssertionError("Two corpora must have same number of lines!")
+
                 yield self._example_dict_iter(line, iteration_index)
 
+            print("self.assoc_iter.eof = {}".format(self.assoc_iter.eof))
             if self.assoc_iter.eof:
                 self.eof = True
                 self.corpus.close()
@@ -428,6 +476,8 @@ class ShardedTextCorpusIterator(object):
             # Yield tuples util this shard's size reaches the threshold.
             self.corpus.seek(self.last_pos)
             while True:
+                self.line_index += 1
+                iteration_index += 1
                 if self.shard_size != 0 and self.line_index % 64 == 0:
                     # This part of check is time consuming on Py2 (but
                     # it is quite fast on Py3, weird!). So we don't bother
@@ -443,10 +493,11 @@ class ShardedTextCorpusIterator(object):
                 if line == '':
                     self.eof = True
                     self.corpus.close()
-                    raise StopIteration
+                    print("[bt] Reached end of file {} iteration_index = {}"
+                          .format(os.path.basename(self.corpus_path), iteration_index))
+                    break
+                    # raise StopIteration('{} is misformated at {}'.format(self.corpus_path, self.line_index))
 
-                self.line_index += 1
-                iteration_index += 1
                 yield self._example_dict_iter(line, iteration_index)
 
     def hit_end(self):

@@ -43,7 +43,7 @@ def parse_args():
 
 def build_save_text_dataset_in_shards(
     src_corpus, tgt_corpus, src_corpus2, tgt_corpus2, fields,
-    corpus_type, opt, pointers
+    corpus_type, opt, pointers_file, edges_file=None
     ):
     '''
     Divide the big corpus into shards, and build dataset separately.
@@ -83,6 +83,7 @@ def build_save_text_dataset_in_shards(
                 '(shard_size = %d bytes).' % opt.max_shard_size)
 
     ret_list = []
+    # assoc_iter is to make sure they have the same number of lines
     src_iter = onmt.io.ShardedTextCorpusIterator(
                 src_corpus, opt.src_seq_length_trunc,
                 "src1", opt.max_shard_size)
@@ -106,7 +107,7 @@ def build_save_text_dataset_in_shards(
                 src_iter.num_feats, tgt_iter.num_feats, src_iter2.num_feats, tgt_iter2.num_feats,
                 src_seq_length=opt.src_seq_length,
                 tgt_seq_length=opt.tgt_seq_length,
-                dynamic_dict=opt.dynamic_dict, pointers_file=pointers)
+                dynamic_dict=opt.dynamic_dict, pointers_file=pointers_file, edge_file=edges_file)
 
         # We save fields in vocab.pt seperately, so make it empty.
         dataset.fields = []
@@ -129,19 +130,21 @@ def build_save_dataset(corpus_type, fields, opt):
         tgt_corpus = opt.train_tgt1
         src_corpus2 = opt.train_src2
         tgt_corpus2 = opt.train_tgt2
-        pointers = opt.train_ptr
+        edges_file = opt.train_edge
+        pointers_file = opt.train_ptr
     else:
         src_corpus = opt.valid_src1
         tgt_corpus = opt.valid_tgt1
         src_corpus2 = opt.valid_src2
         tgt_corpus2 = opt.valid_tgt2
-        pointers = None
+        edges_file = opt.valid_edge
+        pointers_file = None
 
     # Currently we only do preprocess sharding for corpus: data_type=='text'.
     if opt.data_type == 'text':
         return build_save_text_dataset_in_shards(
                 src_corpus, tgt_corpus, src_corpus2, tgt_corpus2, fields,
-                corpus_type, opt, pointers=pointers)
+                corpus_type, opt, pointers_file=pointers_file, edges_file=edges_file)
 
     sys.exit(1)
     # For data_type == 'img' or 'audio', currently we don't do
@@ -171,9 +174,9 @@ def build_save_dataset(corpus_type, fields, opt):
     # return [pt_file]
 
 
-def build_save_vocab(train_dataset, fields, opt):
+def build_save_vocab(train_dataset_files, fields, opt):
     fields = onmt.io.build_vocab(
-        train_dataset, fields, opt.data_type,
+        train_dataset_files, fields, opt.data_type,
         opt.share_vocab,
         opt.src_vocab_size,
         opt.src_words_min_frequency,
@@ -220,6 +223,7 @@ def main():
 
     print("Building & saving training data...")
     train_dataset_files = build_save_dataset('train', fields, opt)
+    print("train_dataset_files = {}".format(train_dataset_files))
 
     print("Building & saving vocabulary...")
     build_save_vocab(train_dataset_files, fields, opt)

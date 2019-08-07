@@ -14,7 +14,7 @@ import onmt.io
 
 # TGT_VOCAB_SIZE = 606
 # TGT_VOCAB_SIZE = 580
-TGT_VOCAB_SIZE = 630
+TGT_VOCAB_SIZE = 638
 class LossComputeBase(nn.Module):
     """
     Class for managing efficient loss computation. Handles

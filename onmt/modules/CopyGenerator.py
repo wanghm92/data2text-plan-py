@@ -195,8 +195,83 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         self.force_copy = force_copy
         self.normalize_by_length = normalize_by_length
         self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy, self.padding_idx)
-        self.table_recon_criterion = TableReconstructionCriterion(self.padding_idx)
         self.switch_loss_criterion = nn.BCELoss(size_average=False)  # the losses are summed for each minibatch
+
+    def _make_shard_state(self, batch, output, range_, attns):
+        """ See base class for args description. """
+        if getattr(batch, "alignment", None) is None:
+            raise AssertionError("using -copy_attn you need to pass in -dynamic_dict during preprocess stage.")
+
+        return {
+            "output": output,
+            "target": batch.tgt2[range_[0] + 1: range_[1]],
+            "copy_attn": attns.get("copy"),
+            "align": batch.alignment[range_[0] + 1: range_[1]],
+            "ptrs": batch.ptrs[range_[0] + 1: range_[1]]
+
+        }
+
+    def _compute_loss(self, batch, output, target, copy_attn, align, ptrs):
+        """
+        Compute the loss. The args must match self._make_shard_state().
+        Args:
+            batch: the current batch.
+            output: the predict output from the model.
+            target: the validate target to compare output with.
+            copy_attn: the copy attention value.
+            align: the align info.
+        """
+        target = target.view(-1)
+        align = align.view(-1)
+        scores, p_copy = self.generator(self._bottle(output),
+                                self._bottle(copy_attn),
+                                batch.src_map, align, ptrs)
+        loss = self.criterion(scores, align, target)
+        switch_loss = self.switch_loss_criterion(p_copy, align.ne(0).float().view(-1, 1))
+        scores_data = scores.data.clone()
+        scores_data = onmt.io.TextDataset.collapse_copy_scores(
+                self._unbottle(scores_data, batch.batch_size),
+                batch, self.tgt_vocab, self.cur_dataset.src_vocabs)
+        scores_data = self._bottle(scores_data)
+
+        # Correct target copy token instead of <unk>
+        # tgt[i] = align[i] + len(tgt_vocab)
+        # for i such that tgt[i] == 0 and align[i] != 0
+        target_data = target.data.clone()
+        correct_mask = target_data.eq(0) * align.data.ne(0)
+        correct_copy = (align.data + len(self.tgt_vocab)) * correct_mask.long()
+        target_data = target_data + correct_copy
+
+        # Compute sum of perplexities for stats
+        loss_data = loss.sum().data.clone()
+        stats = self._stats(loss_data, scores_data, target_data)
+
+        if self.normalize_by_length:
+            # Compute Loss as NLL divided by seq length
+            # Compute Sequence Lengths
+            pad_ix = batch.dataset.fields['tgt2'].vocab.stoi[onmt.io.PAD_WORD]
+            tgt_lens = batch.tgt2.ne(pad_ix).sum(0).float()
+            # Compute Total Loss per sequence in batch
+            loss = loss.view(-1, batch.batch_size).sum(0)
+            # Divide by length of each sequence and sum
+            loss = torch.div(loss, tgt_lens).sum()
+        else:
+            loss = loss.sum()
+
+        loss = loss + switch_loss # summed over all samples for each minibatch
+        return loss, stats
+
+
+class CopyGeneratorLossComputeV2(CopyGeneratorLossCompute):
+    def __init__(
+        self, generator, tgt_vocab,
+        force_copy, normalize_by_length,
+        eps=1e-20
+        ):
+        super(CopyGeneratorLossComputeV2, self).__init__(
+            generator, tgt_vocab, force_copy, normalize_by_length, eps=1e-20
+        )
+        self.table_recon_criterion = TableReconstructionCriterion(self.padding_idx)
 
     def _make_shard_state(self, batch, output, range_, attns):
         """ See base class for args description. """
@@ -229,7 +304,9 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
                                 self._bottle(copy_attn),
                                 batch.src_map, align, ptrs)
         loss = self.criterion(scores, align, target)
-        tbr_loss = self.table_recon_criterion(self._bottle(table_attn), align, target)
+        tbr_loss = None
+        if table_attn is not None:
+            tbr_loss = self.table_recon_criterion(self._bottle(table_attn), align, target)
         switch_loss = self.switch_loss_criterion(p_copy, align.ne(0).float().view(-1, 1))
         scores_data = scores.data.clone()
         scores_data = onmt.io.TextDataset.collapse_copy_scores(
@@ -261,5 +338,7 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         else:
             loss = loss.sum()
 
-        loss = loss + switch_loss + tbr_loss * LAMBDA # summed over all samples for each minibatch
+        loss = loss + switch_loss # summed over all samples for each minibatch
+        if tbr_loss is not None:
+            loss += tbr_loss * LAMBDA
         return loss, stats

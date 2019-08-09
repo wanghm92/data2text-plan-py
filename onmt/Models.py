@@ -10,7 +10,7 @@ from torch.nn.utils.rnn import pad_packed_sequence as unpack
 import onmt
 from onmt.Utils import aeq
 from torch_geometric.data import Data, Batch
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, GATConv
 
 
 def rnn_factory(rnn_type, **kwargs):
@@ -29,27 +29,10 @@ class EncoderBase(nn.Module):
     """
     Base encoder class. Specifies the interface used by different encoder types
     and required by :obj:`onmt.Models.NMTModel`.
-
-    .. mermaid::
-
-        graph BT
-            A[Input]
-            subgraph RNN
-            C[Pos 1]
-            D[Pos 2]
-            E[Pos N]
-            end
-            F[Memory_Bank]
-            G[Final]
-            A-->C
-            A-->D
-            A-->E
-            C-->F
-            D-->F
-            E-->F
-            E-->G
     """
-    def _check_args(self, input, lengths=None, hidden=None):
+    def _check_args(self, input, edges=None, lengths=None, hidden=None):
+        if isinstance(self, GraphEncoder) and edges is None:
+            raise ValueError('edges cannot be None for GraphEncoder')
         s_len, n_batch, n_feats = input.size()
         if lengths is not None:
             n_batch_, = lengths.size()
@@ -94,15 +77,15 @@ class MeanEncoder(EncoderBase):
         "See :obj:`EncoderBase.forward()`"
         if isinstance(src, tuple):
             src, _ = src
-        self._check_args(src, lengths, encoder_state)
+        self._check_args(src, lengths=lengths, hidden=encoder_state)
 
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch, emb_dim = emb.size()
-        decoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+        encoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 
-        mean = decoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
-        memory_bank = decoder_output
+        mean = encoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
+        memory_bank = encoder_output
         encoder_final = (mean, mean)
         return encoder_final, (memory_bank, tbl_emb)
 
@@ -114,7 +97,7 @@ class GraphEncoder(EncoderBase):
     Returns:
         [type] -- [description]
     """
-    def __init__(self, num_layers, embeddings, emb_size, attn_hidden, dropout=0.0, attn_type="general", coverage_attn=False):
+    def __init__(self, num_layers, embeddings, emb_size, dropout=0.0):
         super(GraphEncoder, self).__init__()
         self.num_layers = num_layers
         embeddings, table_embeddings, edge_embeddings = embeddings
@@ -122,39 +105,46 @@ class GraphEncoder(EncoderBase):
         self.edge_embeddings = edge_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
-        self.conv = GCNConv(600, 600)  # TODO: define dimensions here
+        self.conv = GCNConv(emb_size, emb_size)
+        # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
 
-    def _construct_data_list(self, edge_left, edge_right, emb):
-        # src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
-        # TODO: get lengths and truncate left and right edges
+    def _construct_data_list(self, edges, emb):
+        edge_left, edge_right, edge_label, num_edge = edges
         data_list = []
-        for left, right, x in \
-                zip(torch.split(edge_left, 1, dim=1), torch.split(edge_right, 1, dim=1), torch.split(emb, 1, dim=1)):
-            edge_index = torch.cat([left, right], dim=1).t().contiguous()
+        for left, right, label, length, x in \
+                zip(torch.split(edge_left, 1, dim=1),
+                    torch.split(edge_right, 1, dim=1),
+                    torch.split(edge_label, 1, dim=1),
+                    torch.split(num_edge, 1),
+                    torch.split(emb, 1, dim=1)):
+            edge_index = torch.cat([left, right], dim=1).t().contiguous()[:, :length.item()]
             x = x.squeeze(1)
-            data = Data(x=x, edge_index=edge_index)
+            label = label.squeeze(1)[:length.item()]-2  #! NOTE: here -2 is for index_select
+            data = Data(x=x, edge_index=edge_index, edge_label=label)
             data_list.append(data)
         return data_list
+
+    def _node_encoding(self, graph_batch, shape):
+        out = F.relu(self.conv(graph_batch.x, graph_batch.edge_index))
+        out = self.dropout(out)
+        out = out.reshape(shape)
+        return out
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
         "See :obj:`EncoderBase.forward()`"
         src, edges = src
-        self._check_args(src, lengths, encoder_state)
+        self._check_args(src, edges, lengths, encoder_state)
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch_size, emb_dim = emb.size()
 
-        if edges is None:
-            raise ValueError('edges cannot be None for GraphEncoder')
-        edge_left, edge_right, edge_labels = edges
-
-        data_list = self._construct_data_list(edge_left, edge_right, emb)
+        data_list = self._construct_data_list(edges, emb)
         graph_batch = Batch.from_data_list(data_list)
-        decoder_output = self.conv(graph_batch.x, graph_batch.edge_index)
-        decoder_output = decoder_output.reshape(emb.size())
+        # decoder_output = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_label)
+        encoder_output = self._node_encoding(graph_batch, emb.size())
 
-        mean = decoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
-        memory_bank = decoder_output
+        mean = encoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
+        memory_bank = encoder_output
         encoder_final = (mean, mean)
         return encoder_final, (memory_bank, tbl_emb)
 
@@ -769,7 +759,6 @@ class NMTModel(nn.Module):
         if isinstance(src, tuple):
             src, trimmed_tbl_embs, edges = src
 
-        # TODO: pass edges to encoder
         enc_final, memory_bank = self.encoder((src, edges), lengths)
 
         enc_embs = None
@@ -836,7 +825,7 @@ class RNNDecoderState(DecoderState):
         # Init the input feed.
         batch_size = self.hidden[0].size(1)
         h_size = (batch_size, hidden_size)
-        self.input_feed = Variable(self.hidden[0].data.new(*h_size).zero_(), requires_grad=False).unsqueeze(0)
+        self.input_feed = self.hidden[0].data.new(*h_size).zero_().unsqueeze(0)
 
     @property
     def _all(self):
@@ -853,7 +842,7 @@ class RNNDecoderState(DecoderState):
 
     def repeat_beam_size_times(self, beam_size):
         """ Repeat beam_size times along batch dimension. """
-        vars = [Variable(e.data.repeat(1, beam_size, 1), volatile=True)
+        vars = [Variable(e.data.repeat(1, beam_size, 1), requires_grad=False)
                 for e in self._all]
         self.hidden = tuple(vars[:-1])
         self.input_feed = vars[-1]

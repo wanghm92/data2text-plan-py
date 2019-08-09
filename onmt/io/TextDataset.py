@@ -12,7 +12,7 @@ import torchtext
 from onmt.Utils import aeq
 from onmt.io.BoxField import BoxField
 from onmt.io.DatasetBase import (ONMTDatasetBase, UNK_WORD, PAD_WORD, BOS_WORD, EOS_WORD)
-import jsonlines, traceback, os
+import jsonlines, os
 from tqdm import tqdm
 PAD_INDEX = 1
 BOS_INDEX = 2
@@ -230,10 +230,9 @@ class TextDataset(ONMTDatasetBase):
             fields["src1_feat_" + str(j)] = \
                 BoxField(sequential=False, pad_token=PAD_WORD)
 
-        # TODO: get the actual lengths (number of valid edges) on the fly and truncate the indices vectors
-        # before repacking as pyg data objects
         fields["edge_labels"] = BoxField(
-            pad_token=PAD_WORD
+            pad_token=PAD_WORD,
+            include_lengths=True
         )
         fields["edge_left"] = BoxField(
             use_vocab=False,

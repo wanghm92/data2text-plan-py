@@ -86,7 +86,8 @@ class BoxField(RawField):
         preprocessing=None, postprocessing=None, lower=False,
         tokenize=(lambda s: s.split()), include_lengths=False,
         batch_first=False, pad_token="<pad>", unk_token="<unk>",
-        pad_first=False
+        pad_first=False,
+        is_target=False
         ):
         self.sequential = sequential
         self.use_vocab = use_vocab
@@ -266,5 +267,7 @@ class BoxField(RawField):
             if self.include_lengths:
                 lengths = lengths.cuda(device)
         if self.include_lengths:
-            return Variable(arr, volatile=not train), lengths
-        return Variable(arr, volatile=not train)
+            return arr, lengths
+            # return Variable(arr, volatile=not train), lengths
+        return arr
+        # return Variable(arr, volatile=not train)

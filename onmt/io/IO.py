@@ -87,9 +87,9 @@ def merge_vocabs(vocabs, vocab_size=None):
     """
     merged = sum([vocab.freqs for vocab in vocabs], Counter())
     return torchtext.vocab.Vocab(merged,
-                                 specials=[UNK_WORD, PAD_WORD,
-                                           BOS_WORD, EOS_WORD],
-                                 max_size=vocab_size)
+                                specials=[UNK_WORD, PAD_WORD,
+                                            BOS_WORD, EOS_WORD],
+                                max_size=vocab_size)
 
 
 def get_num_features(data_type, corpus_file, side):
@@ -170,21 +170,21 @@ def collect_feature_vocabs(fields, side):
 
 # for translate
 def build_dataset(fields, data_type, src_path, tgt_path, src_path2, tgt_path2, src_dir=None,
-                  src_seq_length=0, tgt_seq_length=0,
-                  src_seq_length_trunc=0, tgt_seq_length_trunc=0,
-                  dynamic_dict=True, sample_rate=0,
-                  window_size=0, window_stride=0, window=None,
-                  normalize_audio=True, use_filter_pred=True,
-                  edge_file=None):
+                    src_seq_length=0, tgt_seq_length=0,
+                    src_seq_length_trunc=0, tgt_seq_length_trunc=0,
+                    dynamic_dict=True, sample_rate=0,
+                    window_size=0, window_stride=0, window=None,
+                    normalize_audio=True, use_filter_pred=True,
+                    edge_file=None):
 
     # Build src/tgt examples iterator from corpus files, also extract
     # number of features.
     #! NOTE: building iterators using essentially the same APIs for text
     src_examples_iter, num_src_feats = \
         _make_examples_nfeats_tpl(data_type, src_path, src_dir,
-                                  src_seq_length_trunc, sample_rate,
-                                  window_size, window_stride,
-                                  window, normalize_audio, "src1")
+                                    src_seq_length_trunc, sample_rate,
+                                    window_size, window_stride,
+                                    window, normalize_audio, "src1")
 
     tgt_examples_iter, num_tgt_feats = \
         TextDataset.make_text_examples_nfeats_tpl(
@@ -192,9 +192,9 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_path2, tgt_path2, s
 
     src_examples_iter2, num_src_feats2 = \
         _make_examples_nfeats_tpl(data_type, src_path2, src_dir,
-                                  src_seq_length_trunc, sample_rate,
-                                  window_size, window_stride,
-                                  window, normalize_audio, "src2")
+                                    src_seq_length_trunc, sample_rate,
+                                    window_size, window_stride,
+                                    window, normalize_audio, "src2")
 
     tgt_examples_iter2, num_tgt_feats2 = \
         TextDataset.make_text_examples_nfeats_tpl(
@@ -203,30 +203,30 @@ def build_dataset(fields, data_type, src_path, tgt_path, src_path2, tgt_path2, s
     #! NOTE building dataset
     if data_type == 'text':
         dataset = TextDataset(fields, src_examples_iter, tgt_examples_iter, src_examples_iter2, tgt_examples_iter2,
-                              num_src_feats, num_tgt_feats,
-                              src_seq_length=src_seq_length,
-                              tgt_seq_length=tgt_seq_length,
-                              dynamic_dict=dynamic_dict,
-                              use_filter_pred=use_filter_pred,
-                              edge_file=edge_file)
+                                num_src_feats, num_tgt_feats,
+                                src_seq_length=src_seq_length,
+                                tgt_seq_length=tgt_seq_length,
+                                dynamic_dict=dynamic_dict,
+                                use_filter_pred=use_filter_pred,
+                                edge_file=edge_file)
     '''
-    # temporarily not used 
+    # temporarily not used
     elif data_type == 'img':
         dataset = ImageDataset(fields, src_examples_iter, tgt_examples_iter,
-                               num_src_feats, num_tgt_feats,
-                               tgt_seq_length=tgt_seq_length,
-                               use_filter_pred=use_filter_pred)
+                                num_src_feats, num_tgt_feats,
+                                tgt_seq_length=tgt_seq_length,
+                                use_filter_pred=use_filter_pred)
 
     elif data_type == 'audio':
         dataset = AudioDataset(fields, src_examples_iter, tgt_examples_iter,
-                               num_src_feats, num_tgt_feats,
-                               tgt_seq_length=tgt_seq_length,
-                               sample_rate=sample_rate,
-                               window_size=window_size,
-                               window_stride=window_stride,
-                               window=window,
-                               normalize_audio=normalize_audio,
-                               use_filter_pred=use_filter_pred)
+                                num_src_feats, num_tgt_feats,
+                                tgt_seq_length=tgt_seq_length,
+                                sample_rate=sample_rate,
+                                window_size=window_size,
+                                window_stride=window_stride,
+                                window=window,
+                                normalize_audio=normalize_audio,
+                                use_filter_pred=use_filter_pred)
     '''
     return dataset
 
@@ -267,16 +267,22 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
         print(" * reloading %s and build counters" % path)
         for ex in tqdm(dataset.examples):
             for k in fields:
+                #! don't update edge vocabs to save time
+                if 'edge' in k:
+                    continue
                 val = getattr(ex, k, None)
-                # TODO: come back here to update he keys
                 if val is not None and k in ('indices', 'src_map', 'alignment'):
                     val = [val]
                 counter[k].update(val)
 
+    # TODO: save edge label vocab during graph construction, and include here
+    for _ in range(10):
+        counter['edge_labels'].update(['>', '<', '=', 'has'])
+
     for tgt in ("tgt1", "tgt2"):
         _build_field_vocab(fields[tgt], counter[tgt],
-                           max_size=tgt_vocab_size,
-                           min_freq=tgt_words_min_frequency)
+                            max_size=tgt_vocab_size,
+                            min_freq=tgt_words_min_frequency)
         print(" * %s vocab size: %d." % (tgt, len(fields[tgt].vocab)))
 
         # All datasets have same num of n_tgt_features,
@@ -289,16 +295,16 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
 
     if "edge_labels" in fields:
         _build_field_vocab(fields["edge_labels"], counter["edge_labels"],
-                           max_size=tgt_vocab_size,
-                           min_freq=tgt_words_min_frequency)
+                            max_size=tgt_vocab_size,
+                            min_freq=tgt_words_min_frequency)
         print(" * edge_labels vocab size: {}.".format(len(fields["edge_labels"].vocab)))
         print(" * edge_labels vocab: {}".format(fields["edge_labels"].vocab.stoi))
 
     if data_type == 'text':
         for src in ("src1", "src2"):
             _build_field_vocab(fields[src], counter[src],
-                               max_size=src_vocab_size,
-                               min_freq=src_words_min_frequency)
+                                max_size=src_vocab_size,
+                                min_freq=src_words_min_frequency)
             print(" * %s vocab size: %d." % (src, len(fields[src].vocab)))
 
             # All datasets have same num of n_src_features,
@@ -323,9 +329,9 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
 
 
 def _make_examples_nfeats_tpl(data_type, src_path, src_dir,
-                              src_seq_length_trunc, sample_rate,
-                              window_size, window_stride,
-                              window, normalize_audio, src="src1"):
+                                src_seq_length_trunc, sample_rate,
+                                window_size, window_stride,
+                                window, normalize_audio, src="src1"):
     """
     Process the corpus into (example_dict iterator, num_feats) tuple
     on source side for different 'data_type'.
@@ -367,6 +373,5 @@ class OrderedIterator(torchtext.data.Iterator):
             self.batches = pool(self.data(), self.random_shuffler)
         else:
             self.batches = []
-            for b in torchtext.data.batch(self.data(), self.batch_size,
-                                          self.batch_size_fn):
+            for b in torchtext.data.batch(self.data(), self.batch_size, self.batch_size_fn):
                 self.batches.append(sorted(b, key=self.sort_batch_key))

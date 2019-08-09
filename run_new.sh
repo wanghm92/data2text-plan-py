@@ -5,8 +5,8 @@ BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_aaai/new_dat
 # IDENTIFIER=newcc-trl-1e-1
 IDENTIFIER=aaai
 
-TRAIN_SRC1=$BASE/train/src_train.norm.trim.ncp.txt
-TRAIN_TGT1=$BASE/train/train_content_plan_ids.ncp.txt
+TRAIN_SRC1=$BASE/train/src_train.norm.trim.txt
+TRAIN_TGT1=$BASE/train/train_content_plan_ids.txt
 TRAIN_SRC2=$BASE/train/train_content_plan_tks.txt
 TRAIN_TGT2=$BASE/train/tgt_train.norm.mwe.trim.txt
 TRAIN_PTR=$BASE/train/train_ptrs.txt
@@ -14,21 +14,51 @@ TRAIN_EDGE=$BASE/train/edge_combo_train.jsonl
 
 wc $TRAIN_SRC1 $TRAIN_TGT1 $TRAIN_SRC2 $TRAIN_TGT2 $TRAIN_PTR
 
-VALID_SRC1=$BASE/valid/src_valid.norm.trim.ncp.txt
-VALID_TGT1=$BASE/valid/valid_content_plan_ids.ncp.txt
+VALID_SRC1=$BASE/valid/src_valid.norm.trim.txt
+VALID_TGT1=$BASE/valid/valid_content_plan_ids.txt
 VALID_SRC2=$BASE/valid/valid_content_plan_tks.txt
 VALID_TGT2=$BASE/valid/tgt_valid.norm.mwe.trim.txt
 VALID_EDGE=$BASE/valid/edge_combo_valid.jsonl
 
 wc $VALID_SRC1 $VALID_TGT1 $VALID_SRC2 $VALID_TGT2
 
-TEST_SRC1=$BASE/test/src_test.norm.trim.ncp.txt
-TEST_TGT1=$BASE/test/test_content_plan_ids.ncp.txt
+TEST_SRC1=$BASE/test/src_test.norm.trim.txt
+TEST_TGT1=$BASE/test/test_content_plan_ids.txt
 TEST_SRC2=$BASE/test/test_content_plan_tks.txt
 TEST_TGT2=$BASE/test/tgt_test.norm.mwe.trim.txt
 TEST_EDGE_LEFT=$BASE/test/edge_combo_test.jsonl
 
 wc $TEST_SRC1 $TEST_TGT1 $TEST_SRC2 $TEST_TGT2
+
+#TEMP=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_aaai/new_dataset/new_extend_small
+#head -n 100 $TRAIN_SRC1 > $TEMP/train/src_train.norm.trim.txt
+#head -n 100 $TRAIN_TGT1 > $TEMP/train/train_content_plan_ids.txt
+#head -n 100 $TRAIN_SRC2 > $TEMP/train/train_content_plan_tks.txt
+#head -n 100 $TRAIN_TGT2 > $TEMP/train/tgt_train.norm.mwe.trim.txt
+#head -n 100 $TRAIN_PTR > $TEMP/train/train_ptrs.txt
+#head -n 100 $TRAIN_EDGE > $TEMP/train/edge_combo_train.jsonl
+#
+#head -n 100 $VALID_SRC1 > $TEMP/valid/src_valid.norm.trim.txt
+#head -n 100 $VALID_TGT1 > $TEMP/valid/valid_content_plan_ids.txt
+#head -n 100 $VALID_SRC2 > $TEMP/valid/valid_content_plan_tks.txt
+#head -n 100 $VALID_TGT2 > $TEMP/valid/tgt_valid.norm.mwe.trim.txt
+#head -n 100 $VALID_EDGE > $TEMP/valid/edge_combo_valid.jsonl
+#
+#TRAIN_SRC1=$TEMP/train/src_train.norm.trim.txt
+#TRAIN_TGT1=$TEMP/train/train_content_plan_ids.txt
+#TRAIN_SRC2=$TEMP/train/train_content_plan_tks.txt
+#TRAIN_TGT2=$TEMP/train/tgt_train.norm.mwe.trim.txt
+#TRAIN_PTR=$TEMP/train/train_ptrs.txt
+#TRAIN_EDGE=$TEMP/train/edge_combo_train.jsonl
+#
+#VALID_SRC1=$TEMP/valid/src_valid.norm.trim.txt
+#VALID_TGT1=$TEMP/valid/valid_content_plan_ids.txt
+#VALID_SRC2=$TEMP/valid/valid_content_plan_tks.txt
+#VALID_TGT2=$TEMP/valid/tgt_valid.norm.mwe.trim.txt
+#VALID_EDGE=$TEMP/valid/edge_combo_valid.jsonl
+#
+#wc $VALID_SRC1 $VALID_TGT1 $VALID_SRC2 $VALID_TGT2
+#wc $TRAIN_SRC1 $TRAIN_TGT1 $TRAIN_SRC2 $TRAIN_TGT2 $TRAIN_PTR
 
 ###################################################################################################
 PREPRO=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_aaai/new_dataset/new_ncpcc/pt_data/$IDENTIFIER

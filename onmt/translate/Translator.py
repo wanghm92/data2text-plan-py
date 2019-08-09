@@ -11,27 +11,29 @@ class Translator(object):
 
 
     Args:
-       model (:obj:`onmt.modules.NMTModel`):
-          NMT model to use for translation
-       fields (dict of Fields): data fields
-       beam_size (int): size of beam to use
-       n_best (int): number of translations produced
-       max_length (int): maximum length output to produce
-       global_scores (:obj:`GlobalScorer`):
-         object to rescore final translations
-       copy_attn (bool): use copy attention during translation
-       cuda (bool): use cuda
-       beam_trace (bool): trace beam search for debugging
+        model (:obj:`onmt.modules.NMTModel`):
+            NMT model to use for translation
+        fields (dict of Fields): data fields
+        beam_size (int): size of beam to use
+        n_best (int): number of translations produced
+        max_length (int): maximum length output to produce
+        global_scores (:obj:`GlobalScorer`):
+            object to rescore final translations
+        copy_attn (bool): use copy attention during translation
+        cuda (bool): use cuda
+        beam_trace (bool): trace beam search for debugging
     """
-    def __init__(self, model, model2, fields,
-                 beam_size, n_best=1,
-                 max_length=100,
-                 global_scorer=None,
-                 copy_attn=False,
-                 cuda=False,
-                 beam_trace=False,
-                 min_length=0,
-                 stepwise_penalty=False):
+    def __init__(
+        self, model, model2, fields,
+        beam_size, n_best=1,
+        max_length=100,
+        global_scorer=None,
+        copy_attn=False,
+        cuda=False,
+        beam_trace=False,
+        min_length=0,
+        stepwise_penalty=False
+    ):
         self.model = model
         self.model2 = model2
         self.fields = fields
@@ -60,13 +62,13 @@ class Translator(object):
         Mostly a wrapper around :obj:`Beam`.
 
         Args:
-           batch (:obj:`Batch`): a batch from a dataset object
-           data (:obj:`Dataset`): the dataset object
-           tgt_plan_map (): mapping between tgt indices and tgt_planning
+            batch (:obj:`Batch`): a batch from a dataset object
+            data (:obj:`Dataset`): the dataset object
+            tgt_plan_map (): mapping between tgt indices and tgt_planning
 
 
         Todo:
-           Shouldn't need the original dataset.
+            Shouldn't need the original dataset.
         """
 
         # (0) Prep each of the components of the search.
@@ -91,7 +93,7 @@ class Translator(object):
                 for __ in range(batch_size)]
 
         # Help functions for working with beams and batches
-        def var(a): return Variable(a, volatile=True)
+        def var(a): return Variable(a, requires_grad=False)
 
         def rvar(a): return var(a.repeat(1, beam_size, 1))
 
@@ -144,8 +146,7 @@ class Translator(object):
 
             # Construct batch x beam_size nxt words.
             # Get all the pending current beam words and arrange for forward.
-            inp = var(torch.stack([b.get_current_state() for b in beam])
-                      .t().contiguous().view(1, -1))
+            inp = var(torch.stack([b.get_current_state() for b in beam]).t().contiguous().view(1, -1))
 
             # Turn any copied words to UNKs
             # 0 is unk
@@ -204,9 +205,11 @@ class Translator(object):
         return ret
 
     def _from_beam(self, beam):
-        ret = {"predictions": [],
-               "scores": [],
-               "attention": []}
+        ret = {
+            "predictions": [],
+            "scores": [],
+            "attention": []
+        }
         for b in beam:
             n_best = self.n_best
             scores, ks = b.sort_finished(minimum=n_best)

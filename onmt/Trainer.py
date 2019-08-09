@@ -18,7 +18,11 @@ import torch.nn as nn
 import onmt
 import onmt.io
 import onmt.modules
-
+import logging, os
+program = os.path.basename(sys.argv[0])
+L = logging.getLogger(program)
+logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s')
+logging.root.setLevel(level=logging.INFO)
 
 class Statistics(object):
     """
@@ -30,19 +34,19 @@ class Statistics(object):
     * elapsed time
     """
     def __init__(self, loss=0, n_words=0, n_correct=0):
-        self.loss = loss
-        self.n_words = n_words
-        self.n_correct = n_correct
+        self.loss = loss*1.0
+        self.n_words = n_words*1.0
+        self.n_correct = n_correct*1.0
         self.n_src_words = 0
         self.start_time = time.time()
 
     def update(self, stat):
-        self.loss += stat.loss
-        self.n_words += stat.n_words
-        self.n_correct += stat.n_correct
+        self.loss += stat.loss*1.0
+        self.n_words += stat.n_words*1.0
+        self.n_correct += stat.n_correct*1.0
 
     def accuracy(self):
-        return 100 * (self.n_correct / self.n_words)
+        return 100.0 * (self.n_correct / self.n_words)
 
     def ppl(self):
         return math.exp(min(self.loss / self.n_words, 100))
@@ -60,10 +64,11 @@ class Statistics(object):
             start (int): start time of epoch.
         """
         t = self.elapsed_time()
-        print(
-            ("Epoch %2d, %5d/%5d; acc: %6.2f; ppl: %6.2f; " +
+        L.info(
+            ("Epoch %2d, %5d/%5d; loss: %6.2f; acc: %6.2f; ppl: %6.2f; " +
             "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
             (epoch, batch,  n_batches,
+            self.loss / self.n_words,
             self.accuracy(),
             self.ppl(),
             self.n_src_words / (t + 1e-5),
@@ -232,9 +237,14 @@ class Trainer(object):
             self.tt = torch.cuda if self.cuda else torch
             src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
 
+            edges = None
+            if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
+                edge_labels, num_edges = batch.edge_labels
+                edges = (batch.edge_left, batch.edge_right, edge_labels, num_edges)
+
             tgt = batch.tgt1_planning.unsqueeze(2)
             # F-prop through the model.
-            outputs, attns, _, memory_bank = self.model(src, tgt, src_lengths)
+            outputs, attns, _, memory_bank = self.model((src, None, edges), tgt, src_lengths)
             if isinstance(memory_bank, tuple):
                 memory_bank, enc_embs = memory_bank
             # Compute loss.
@@ -256,7 +266,7 @@ class Trainer(object):
             _, src_lengths = batch.src2
             tgt = onmt.io.make_features(batch, 'tgt2')
             # F-prop through the model.
-            outputs, attns, _, _ = self.model2((emb, trimmed_tbl_embs), tgt, src_lengths)
+            outputs, attns, _, _ = self.model2((emb, trimmed_tbl_embs, None), tgt, src_lengths)
             # Compute loss.
             batch_stats = self.valid_loss2.monolithic_compute_loss(
                 batch, outputs, attns, stage1=False)
@@ -343,14 +353,13 @@ class Trainer(object):
 
             src = onmt.io.make_features(batch, 'src1', self.data_type)
             self.tt = torch.cuda if self.cuda else torch
+            #! NOTE: tables are assumed to have the same size
             src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
 
-            # TODO: get lengths here for number of edges in the graph
-            # TODO: edge labels are not used yet
             edges = None
             if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
-                edge_labels = batch.edge_labels if 'edge_labels' in batch.fields else None
-                edges = (batch.edge_left, batch.edge_right, batch.edge_labels)
+                edge_labels, num_edges = batch.edge_labels
+                edges = (batch.edge_left, batch.edge_right, edge_labels, num_edges)
 
             for j in range(0, target_size-1, trunc_size):
                 #setting to value of tgt_planning

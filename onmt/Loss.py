@@ -14,7 +14,7 @@ import onmt.io
 
 # TGT_VOCAB_SIZE = 606
 # TGT_VOCAB_SIZE = 580
-TGT_VOCAB_SIZE = 638
+TGT_VOCAB_SIZE = 634  # TODO this should not be hard coded
 class LossComputeBase(nn.Module):
     """
     Class for managing efficient loss computation. Handles
@@ -148,7 +148,7 @@ class LossComputeBase(nn.Module):
         pred = scores.max(1)[1]
         non_padding = target.ne(self.padding_idx)
         num_correct = pred.eq(target).masked_select(non_padding).sum()
-        return onmt.Statistics(loss.item(), non_padding.sum(), num_correct)
+        return onmt.Statistics(loss.item(), non_padding.sum().item(), num_correct.item())
 
     def _bottle(self, v):
         return v.view(-1, v.size(2))
@@ -190,6 +190,7 @@ class NMTLossCompute(LossComputeBase):
         self.confidence = 1.0 - label_smoothing
 
     def _make_shard_state(self, batch, output, range_, attns=None):
+        assert attns is not None
         if self.decoder_type == 'pointer':
             return {
                 "output": attns['std'],
@@ -210,6 +211,7 @@ class NMTLossCompute(LossComputeBase):
 
         gtruth = target.view(-1)
         if self.confidence < 1:
+            assert False
             tdata = gtruth.data
             mask = torch.nonzero(tdata.eq(self.padding_idx)).squeeze()
             log_likelihood = torch.gather(scores.data, 1, tdata.unsqueeze(1))
@@ -221,14 +223,16 @@ class NMTLossCompute(LossComputeBase):
             gtruth = Variable(tmp_, requires_grad=False)
 
         loss = self.criterion(scores, gtruth)
+        '''
         if self.confidence < 1:
             # Default: report smoothed ppl.
             # loss_data = -log_likelihood.sum(0)
             loss_data = loss.data.clone()
         else:
-            loss_data = loss.data.clone()
+        '''
+        loss_data = loss.data.clone()
 
-        stats = self._stats(loss_data, scores.data, target.view(-1).data)
+        stats = self._stats(loss_data, scores.data.clone(), gtruth.data.clone())
 
         return loss, stats
 
@@ -264,7 +268,7 @@ def shards(state, shard_size, eval=False, retain_graph=False):
         After the last shard, this function does back-propagation.
     """
     if eval:
-        yield filter_shard_state(state, False, True)
+        yield filter_shard_state(state)
     else:
         # non_none: the subdict of the state dictionary where the values
         # are not None.
@@ -291,6 +295,6 @@ def shards(state, shard_size, eval=False, retain_graph=False):
         for k, (v, v_split) in non_none.items():
             if isinstance(v, torch.Tensor) and state[k].requires_grad:
                 variables.extend(zip(torch.split(state[k], shard_size),
-                                     [v_chunk.grad for v_chunk in v_split]))
+                                    [v_chunk.grad for v_chunk in v_split]))
         inputs, grads = zip(*variables)
         torch.autograd.backward(inputs, grads, retain_graph=retain_graph)

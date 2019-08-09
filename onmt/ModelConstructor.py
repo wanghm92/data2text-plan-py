@@ -25,7 +25,6 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         for_encoder(bool): make Embeddings for encoder or decoder?
         discard_word: return only aggregated feature embeddings
     """
-    # TODO: embedding_dim should be more flexible
     embedding_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
 
     word_padding_idx = word_dict.stoi[onmt.io.PAD_WORD]
@@ -61,10 +60,9 @@ def make_encoder(opt, embeddings, stage1=True):
     if isinstance(embeddings, tuple):
         embeddings, table_embeddings, edge_embeddings = embeddings
     if stage1:
-        # TODO: change this to graph encoder
         src_bundle = (embeddings, table_embeddings, edge_embeddings)
         # return MeanEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, opt.attn_hidden, opt.dropout)
-        return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, opt.attn_hidden, opt.dropout)
+        return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, opt.dropout)
     else:
         # "rnn" or "brnn"
         return RNNEncoder(

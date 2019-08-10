@@ -10,7 +10,7 @@ from torch.nn.utils.rnn import pad_packed_sequence as unpack
 import onmt
 from onmt.Utils import aeq
 from torch_geometric.data import Data, Batch
-from torch_geometric.nn import GCNConv, GATConv
+# from torch_geometric.nn import GCNConv, GATConv
 
 
 def rnn_factory(rnn_type, **kwargs):
@@ -62,7 +62,10 @@ class MeanEncoder(EncoderBase):
         num_layers (int): number of replicated layers
         embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
     """
-    def __init__(self, num_layers, embeddings, emb_size, attn_hidden, dropout=0.0, attn_type="general", coverage_attn=False):
+    def __init__(
+            self, num_layers, embeddings, emb_size,
+            dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False
+    ):
         super(MeanEncoder, self).__init__()
         self.num_layers = num_layers
         self.table_embeddings = None
@@ -71,7 +74,9 @@ class MeanEncoder(EncoderBase):
             self.table_embeddings = table_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
-        self.attn = onmt.modules.GlobalSelfAttention(emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
+        self.no_self_attn = no_self_attn
+        if not self.no_self_attn:
+            self.attn = onmt.modules.GlobalSelfAttention(emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
         "See :obj:`EncoderBase.forward()`"
@@ -82,8 +87,11 @@ class MeanEncoder(EncoderBase):
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch, emb_dim = emb.size()
-        encoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
-
+        if self.no_self_attn:
+            encoder_output = emb
+        else:
+            encoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1),
+                                               memory_lengths=lengths)
         mean = encoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
         memory_bank = encoder_output
         encoder_final = (mean, mean)
@@ -105,7 +113,8 @@ class GraphEncoder(EncoderBase):
         self.edge_embeddings = edge_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
-        self.conv = GCNConv(emb_size, emb_size)
+        # self.conv = GCNConv(emb_size, emb_size)
+        self.conv = onmt.modules.GATConv(emb_size, emb_size)
         # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
 
     def _construct_data_list(self, edges, emb):

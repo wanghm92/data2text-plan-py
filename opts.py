@@ -299,6 +299,14 @@ def train_opts(parser):
                         action='store_true',
                         help="Fix word embeddings on the encoder side.")
 
+    # Model architecture options
+    group.add_argument('-encoder_type',
+                        type=str, default='mean', choices=["mean", "graph"],
+                        help="which type of encoder to use for table.")
+    group.add_argument('-stage1_no_self_attn',
+                        action='store_true',
+                        help="Whether not to use GlobalSelfAttention for table encoder.")
+
     # Optimization options
     group = parser.add_argument_group('Optimization- Type')
     group.add_argument('-batch_size', type=int, default=64,

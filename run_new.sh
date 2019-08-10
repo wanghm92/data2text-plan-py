@@ -1,10 +1,33 @@
 #!/usr/bin/env bash
+PY3='/mnt/cephfs2/nlp/hongmin.wang/anaconda3/envs/pt11py37/bin/python'
+cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
+tot_gpus=`nvidia-smi -q|grep "Attached GPUs"|awk '{print $NF-1}'`
+gpu_ids=`nvidia-smi -q |grep -e "Minor" -e "Process ID" | grep -B 1 Process|grep Minor|awk '{print $NF}'`
+use_gpu=-1
+for i in `seq 0 ${tot_gpus}` ; do
+  if [[ ! "${gpu_ids}" =~ "${i}" ]]; then
+    use_gpu=$i
+    break
+  fi
+done
+if [ $use_gpu = -1 ]; then
+  echo "Error! There is no GPU card available"
+  exit 1
+fi
+echo use gpu card $use_gpu
+
+export CUDA_VISIBLE_DEVICES=$use_gpu
+
 DATA=aaai
+echo $DATA
 SUFFIX=extend
+echo $SUFFIX
 BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_$SUFFIX
+echo $BASE
 #IDENTIFIER=newcc-final
 # IDENTIFIER=newcc-trl-1e-1
-IDENTIFIER=gcn_$DATA
+IDENTIFIER=gat_$DATA
+echo $IDENTIFIER
 
 TRAIN_SRC1=$BASE/train/src_train.norm.trim.txt
 TRAIN_TGT1=$BASE/train/train_content_plan_ids.txt
@@ -79,7 +102,7 @@ VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dat
 #
 ####################################################################################################
 echo "run training"
-python train.py -data $PREPRO/roto-$DATA -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -encoder_type graph
+$PY3 train.py -data $PREPRO/roto-$DATA -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -encoder_type graph
 
 ###################################################################################################
 # echo " ****** Evaluation ****** "

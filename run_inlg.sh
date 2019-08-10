@@ -1,85 +1,53 @@
 #!/usr/bin/env bash
-DATA=aaai
-SUFFIX=extend
-BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_$SUFFIX
-#IDENTIFIER=newcc-final
-# IDENTIFIER=newcc-trl-1e-1
-IDENTIFIER=gcn_$DATA
+PY3='/mnt/cephfs2/nlp/hongmin.wang/anaconda3/envs/pt11py37/bin/python'
+cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
 
-TRAIN_SRC1=$BASE/train/src_train.norm.trim.txt
-TRAIN_TGT1=$BASE/train/train_content_plan_ids.txt
+BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_inlg/inlg_data/new_ncpcc
+IDENTIFIER=newcc-trl-1e-1
+PREFIX=noselfattn
+echo $PREFIX
+
+TRAIN_SRC1=$BASE/train/src_train.norm.trim.ncp.txt
+TRAIN_TGT1=$BASE/train/train_content_plan_ids.ncp.txt
 TRAIN_SRC2=$BASE/train/train_content_plan_tks.txt
-TRAIN_TGT2=$BASE/train/tgt_train.norm.mwe.trim.txt
+TRAIN_TGT2=$BASE/train/tgt_train.norm.filter.mwe.trim.txt
 TRAIN_PTR=$BASE/train/train_ptrs.txt
-TRAIN_EDGE=$BASE/train/edge_combo_train.jsonl
 
 wc $TRAIN_SRC1 $TRAIN_TGT1 $TRAIN_SRC2 $TRAIN_TGT2 $TRAIN_PTR
 
-VALID_SRC1=$BASE/valid/src_valid.norm.trim.txt
-VALID_TGT1=$BASE/valid/valid_content_plan_ids.txt
+VALID_SRC1=$BASE/valid/src_valid.norm.trim.ncp.txt
+VALID_TGT1=$BASE/valid/valid_content_plan_ids.ncp.txt
 VALID_SRC2=$BASE/valid/valid_content_plan_tks.txt
-VALID_TGT2=$BASE/valid/tgt_valid.norm.mwe.trim.txt
-VALID_EDGE=$BASE/valid/edge_combo_valid.jsonl
+VALID_TGT2=$BASE/valid/tgt_valid.norm.filter.mwe.trim.txt
 
 wc $VALID_SRC1 $VALID_TGT1 $VALID_SRC2 $VALID_TGT2
 
-TEST_SRC1=$BASE/test/src_test.norm.trim.txt
-TEST_TGT1=$BASE/test/test_content_plan_ids.txt
+TEST_SRC1=$BASE/test/src_test.norm.trim.ncp.txt
+TEST_TGT1=$BASE/test/test_content_plan_ids.ncp.txt
 TEST_SRC2=$BASE/test/test_content_plan_tks.txt
-TEST_TGT2=$BASE/test/tgt_test.norm.mwe.trim.txt
-TEST_EDGE_LEFT=$BASE/test/edge_combo_test.jsonl
+TEST_TGT2=$BASE/test/tgt_test.norm.filter.mwe.trim.txt
 
 wc $TEST_SRC1 $TEST_TGT1 $TEST_SRC2 $TEST_TGT2
 
-#TEMP=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_aaai/new_dataset/new_extend_small
-#head -n 100 $TRAIN_SRC1 > $TEMP/train/src_train.norm.trim.txt
-#head -n 100 $TRAIN_TGT1 > $TEMP/train/train_content_plan_ids.txt
-#head -n 100 $TRAIN_SRC2 > $TEMP/train/train_content_plan_tks.txt
-#head -n 100 $TRAIN_TGT2 > $TEMP/train/tgt_train.norm.mwe.trim.txt
-#head -n 100 $TRAIN_PTR > $TEMP/train/train_ptrs.txt
-#head -n 100 $TRAIN_EDGE > $TEMP/train/edge_combo_train.jsonl
-#
-#head -n 100 $VALID_SRC1 > $TEMP/valid/src_valid.norm.trim.txt
-#head -n 100 $VALID_TGT1 > $TEMP/valid/valid_content_plan_ids.txt
-#head -n 100 $VALID_SRC2 > $TEMP/valid/valid_content_plan_tks.txt
-#head -n 100 $VALID_TGT2 > $TEMP/valid/tgt_valid.norm.mwe.trim.txt
-#head -n 100 $VALID_EDGE > $TEMP/valid/edge_combo_valid.jsonl
-#
-#TRAIN_SRC1=$TEMP/train/src_train.norm.trim.txt
-#TRAIN_TGT1=$TEMP/train/train_content_plan_ids.txt
-#TRAIN_SRC2=$TEMP/train/train_content_plan_tks.txt
-#TRAIN_TGT2=$TEMP/train/tgt_train.norm.mwe.trim.txt
-#TRAIN_PTR=$TEMP/train/train_ptrs.txt
-#TRAIN_EDGE=$TEMP/train/edge_combo_train.jsonl
-#
-#VALID_SRC1=$TEMP/valid/src_valid.norm.trim.txt
-#VALID_TGT1=$TEMP/valid/valid_content_plan_ids.txt
-#VALID_SRC2=$TEMP/valid/valid_content_plan_tks.txt
-#VALID_TGT2=$TEMP/valid/tgt_valid.norm.mwe.trim.txt
-#VALID_EDGE=$TEMP/valid/edge_combo_valid.jsonl
-#
-#wc $VALID_SRC1 $VALID_TGT1 $VALID_SRC2 $VALID_TGT2
-#wc $TRAIN_SRC1 $TRAIN_TGT1 $TRAIN_SRC2 $TRAIN_TGT2 $TRAIN_PTR
-
 ###################################################################################################
-PREPRO=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_ncpcc/pt_data/$IDENTIFIER
+PREPRO=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_inlg/inlg_data/new_ncpcc/pt_data/$IDENTIFIER
 mkdir -p $PREPRO
 
-OUTPUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/graph_models/$IDENTIFIER
+OUTPUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/inlg_models/$IDENTIFIER/$PREFIX
 mkdir -p $OUTPUT
 
-SUM_OUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/graph_outputs/$IDENTIFIER
+SUM_OUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/inlg_outputs/$IDENTIFIER/$PREFIX
 mkdir -p $SUM_OUT
 
 VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dataset/new_ncpcc
 
 ####################################################################################################
 #echo "run preprocessing"
-#python preprocess.py -train_src1 $TRAIN_SRC1 -train_tgt1 $TRAIN_TGT1 -train_src2 $TRAIN_SRC2 -train_tgt2 $TRAIN_TGT2 -train_edge $TRAIN_EDGE -valid_src1 $VALID_SRC1 -valid_tgt1 $VALID_TGT1 -valid_src2 $VALID_SRC2 -valid_tgt2 $VALID_TGT2 -valid_edge $VALID_EDGE -save_data $PREPRO/roto-$IDENTIFIER -src_seq_length 1000 -tgt_seq_length 1000 -dynamic_dict -train_ptr $TRAIN_PTR
-#
+#python preprocess.py -train_src1 $TRAIN_SRC1 -train_tgt1 $TRAIN_TGT1 -train_src2 $TRAIN_SRC2 -train_tgt2 $TRAIN_TGT2 -valid_src1 $VALID_SRC1 -valid_tgt1 $VALID_TGT1 -valid_src2 $VALID_SRC2 -valid_tgt2 $VALID_TGT2 -save_data $PREPRO/roto-$IDENTIFIER -src_seq_length 1000 -tgt_seq_length 1000 -dynamic_dict -train_ptr $TRAIN_PTR
+
 ####################################################################################################
 echo "run training"
-python train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 1 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events
+$PY3 train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -stage1_no_self_attn
 
 ###################################################################################################
 # echo " ****** Evaluation ****** "

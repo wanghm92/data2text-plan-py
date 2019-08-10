@@ -64,7 +64,7 @@ def make_encoder(opt, embeddings, stage1=True):
         print("Using ** {} ** encoder, stage1_no_self_attn: {}".format(opt.encoder_type, opt.stage1_no_self_attn))
         if opt.encoder_type == 'mean':
             return MeanEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size,
-                               dropout=opt.dropout, no_self_attn=opt.stage1_no_self_attn, attn_hidden=opt.attn_hidden)
+                                dropout=opt.dropout, no_self_attn=opt.stage1_no_self_attn, attn_hidden=opt.attn_hidden)
         elif opt.encoder_type == 'graph':
             return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, opt.dropout)
         else:

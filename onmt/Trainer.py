@@ -169,6 +169,7 @@ class Trainer(object):
             num_batches = -1
 
         for i, batch in enumerate(train_iter):
+            # print("current batch = {}".format(i))
             cur_dataset = train_iter.get_cur_dataset()
             self.train_loss.cur_dataset = cur_dataset
             self.train_loss2.cur_dataset = cur_dataset

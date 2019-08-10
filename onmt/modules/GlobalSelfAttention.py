@@ -18,23 +18,23 @@ class GlobalSelfAttention(nn.Module):
 
     .. mermaid::
 
-       graph BT
-          A[Query]
-          subgraph RNN
+        graph BT
+            A[Query]
+            subgraph RNN
             C[H 1]
             D[H 2]
             E[H N]
-          end
-          F[Attn]
-          G[Output]
-          A --> F
-          C --> F
-          D --> F
-          E --> F
-          C -.-> G
-          D -.-> G
-          E -.-> G
-          F --> G
+            end
+            F[Attn]
+            G[Output]
+            A --> F
+            C --> F
+            D --> F
+            E --> F
+            C -.-> G
+            D -.-> G
+            E -.-> G
+            F --> G
 
     All models compute the output as
     :math:`c = \sum_{j=1}^{SeqLength} a_j H_j` where
@@ -54,9 +54,9 @@ class GlobalSelfAttention(nn.Module):
 
 
     Args:
-       dim (int): dimensionality of query and key
-       coverage (bool): use coverage term
-       attn_type (str): type of attention to use, options [dot,general,mlp]
+        dim (int): dimensionality of query and key
+        coverage (bool): use coverage term
+        attn_type (str): type of attention to use, options [dot,general,mlp]
 
     """
     def __init__(self, dim, coverage=False, attn_type="dot", attn_hidden=0):
@@ -68,8 +68,10 @@ class GlobalSelfAttention(nn.Module):
         assert (self.attn_type in ["dot", "general", "mlp", "fine"]), (
                 "Please select a valid attention type.")
         if attn_hidden > 0:
+            #! Default: bias=True
             self.transform_in = nn.Sequential(nn.Linear(dim, attn_hidden), nn.ELU(0.1))
 
+        print("GlobalSelfAttention attn_type = {} (dim={})".format(self.attn_type, self.attn_hidden))
         if self.attn_type == "general":
             d = attn_hidden if attn_hidden > 0 else dim
             self.linear_in = nn.Linear(d, d, bias=False)
@@ -97,13 +99,13 @@ class GlobalSelfAttention(nn.Module):
     def score(self, h_t, h_s):
         """
         Args:
-          h_t (`FloatTensor`): sequence of queries `[batch x tgt_len x dim]`
-          h_s (`FloatTensor`): sequence of sources `[batch x src_len x dim]`
+            h_t (`FloatTensor`): sequence of queries `[batch x tgt_len x dim]`
+            h_s (`FloatTensor`): sequence of sources `[batch x src_len x dim]`
 
         Returns:
-          :obj:`FloatTensor`:
-           raw attention scores (unnormalized) for each src index
-          `[batch x tgt_len x src_len]`
+            :obj:`FloatTensor`:
+            raw attention scores (unnormalized) for each src index
+            `[batch x tgt_len x src_len]`
 
         """
 
@@ -147,17 +149,17 @@ class GlobalSelfAttention(nn.Module):
         """
 
         Args:
-          input (`FloatTensor`): query vectors `[batch x tgt_len x dim]`
-          memory_bank (`FloatTensor`): source vectors `[batch x src_len x dim]`
-          memory_lengths (`LongTensor`): the source context lengths `[batch]`
-          coverage (`FloatTensor`): None (not supported yet)
+            input (`FloatTensor`): query vectors `[batch x tgt_len x dim]`
+            memory_bank (`FloatTensor`): source vectors `[batch x src_len x dim]`
+            memory_lengths (`LongTensor`): the source context lengths `[batch]`
+            coverage (`FloatTensor`): None (not supported yet)
 
         Returns:
-          (`FloatTensor`, `FloatTensor`):
+            (`FloatTensor`, `FloatTensor`):
 
           * Computed vector `[tgt_len x batch x dim]`
           * Attention distribtutions for each query
-             `[tgt_len x batch x src_len]`
+                `[tgt_len x batch x src_len]`
         """
 
         # one step input

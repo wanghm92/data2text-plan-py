@@ -18,7 +18,7 @@ class PositionalEncoding(nn.Module):
         dropout (float): dropout parameter
         dim (int): embedding size
     """
-
+    # TODO: if needed, change to latest onmt implementation
     def __init__(self, dropout, dim, max_len=5000):
         pe = torch.arange(0, max_len).unsqueeze(1).expand(max_len, dim)
         div_term = 1 / torch.pow(10000, torch.arange(0, dim * 2, 2) / dim)

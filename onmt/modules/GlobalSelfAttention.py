@@ -197,7 +197,7 @@ class GlobalSelfAttention(nn.Module):
         if self.attn_type == "fine":
             mask = mask.unsqueeze(3)
 
-        align.data.masked_fill_(1 - mask, -float('inf'))
+        align.data.masked_fill_(~mask, -float('inf'))
 
         # Softmax to normalize attention weights
         align_vectors = self.sm(align)

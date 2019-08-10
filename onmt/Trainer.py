@@ -65,11 +65,12 @@ class Statistics(object):
         """
         t = self.elapsed_time()
         L.info(
-            ("Epoch %2d, %5d/%5d; loss: %6.2f; acc: %6.2f; ppl: %6.2f; " +
-            "%3.0f src tok/s; %3.0f tgt tok/s; %6.0f s elapsed") %
+            ("Epoch %2d, %4d/%4d; loss: %4.2f; acc: %4.2f (%4.2f/%4.2f); ppl: %4.2f; " +
+            "%3.0f src tok/s; %3.0f tgt tok/s; %3.0f s elapsed") %
             (epoch, batch,  n_batches,
             self.loss / self.n_words,
             self.accuracy(),
+            self.n_correct, self.n_words,
             self.ppl(),
             self.n_src_words / (t + 1e-5),
             self.n_words / (t + 1e-5),

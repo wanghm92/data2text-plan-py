@@ -62,7 +62,7 @@ wc $TEST_SRC1 $TEST_TGT1 $TEST_SRC2 $TEST_TGT2
 #wc $TRAIN_SRC1 $TRAIN_TGT1 $TRAIN_SRC2 $TRAIN_TGT2 $TRAIN_PTR
 
 ###################################################################################################
-PREPRO=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_ncpcc/pt_data/$IDENTIFIER
+PREPRO=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_ncpcc/pt_data/$DATA
 mkdir -p $PREPRO
 
 OUTPUT=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/graph_models/$IDENTIFIER
@@ -79,7 +79,7 @@ VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dat
 #
 ####################################################################################################
 echo "run training"
-python train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 1 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events
+python train.py -data $PREPRO/roto-$DATA -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -encoder_type graph
 
 ###################################################################################################
 # echo " ****** Evaluation ****** "

@@ -114,8 +114,8 @@ class GraphEncoder(EncoderBase):
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
         # self.conv = GCNConv(emb_size, emb_size)
-        self.conv = onmt.modules.GATConv(emb_size, emb_size)
         # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
+        self.conv = onmt.modules.GATConv(emb_size, emb_size)
 
     def _construct_data_list(self, edges, emb):
         edge_left, edge_right, edge_label, num_edge = edges
@@ -133,9 +133,11 @@ class GraphEncoder(EncoderBase):
             data_list.append(data)
         return data_list
 
-    def _node_encoding(self, graph_batch, shape):
-        out = F.relu(self.conv(graph_batch.x, graph_batch.edge_index))
-        out = self.dropout(out)
+    def _node_encoding(self, graph_batch, shape, non_linear=False):
+        out = self.conv(graph_batch.x, graph_batch.edge_index)
+        if non_linear:
+            out = F.relu(out)
+            out = self.dropout(out)
         out = out.reshape(shape)
         return out
 
@@ -143,13 +145,12 @@ class GraphEncoder(EncoderBase):
         "See :obj:`EncoderBase.forward()`"
         src, edges = src
         self._check_args(src, edges, lengths, encoder_state)
-        emb = self.dropout(self.embeddings(src))  # src: word/feature ids
+        emb = self.dropout(self.embeddings(src))
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch_size, emb_dim = emb.size()
 
         data_list = self._construct_data_list(edges, emb)
         graph_batch = Batch.from_data_list(data_list)
-        # decoder_output = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_label)
         encoder_output = self._node_encoding(graph_batch, emb.size())
 
         mean = encoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)

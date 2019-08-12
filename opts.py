@@ -53,7 +53,7 @@ def model_opts(parser):
                         Options are [text|img|audio].""")
 
     group.add_argument('-encoder_type1', type=str, default='rnn',
-                        choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn'],
+                        choices=['rnn', 'brnn', 'mean', 'transformer', 'cnn', 'graph'],
                         help="""Type of encoder layer to use. Non-RNN layers
                         are experimental. Options are
                         [rnn|brnn|mean|transformer|cnn].""")
@@ -300,9 +300,6 @@ def train_opts(parser):
                         help="Fix word embeddings on the encoder side.")
 
     # Model architecture options
-    group.add_argument('-encoder_type',
-                        type=str, default='mean', choices=["mean", "graph"],
-                        help="which type of encoder to use for table.")
     group.add_argument('-stage1_no_self_attn',
                         action='store_true',
                         help="Whether not to use GlobalSelfAttention for table encoder.")

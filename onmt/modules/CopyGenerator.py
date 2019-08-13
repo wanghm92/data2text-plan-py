@@ -101,7 +101,8 @@ class CopyGenerator(nn.Module):
         # print("[CopyGenerator] prob = {}".format(prob))
 
         # Probability of copying p(z=1) batch.
-        p_copy = F.sigmoid(self.linear_copy(hidden))
+        logits_copy = self.linear_copy(hidden)
+        p_copy = torch.sigmoid(logits_copy)
         # Probibility of not copying: p_{word}(w) * (1 - p(z))
 
         if self.training:
@@ -117,7 +118,7 @@ class CopyGenerator(nn.Module):
                                 src_map.transpose(0, 1)).transpose(0, 1)
         copy_prob = copy_prob.contiguous().view(-1, cvocab)
 
-        return torch.cat([out_prob, copy_prob], 1), p_copy
+        return torch.cat([out_prob, copy_prob], 1), p_copy, logits_copy
 
 class CopyGeneratorCriterion(object):
     def __init__(self, vocab_size, force_copy, pad, eps=1e-20):
@@ -195,7 +196,7 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         self.force_copy = force_copy
         self.normalize_by_length = normalize_by_length
         self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy, self.padding_idx)
-        self.switch_loss_criterion = nn.BCELoss(size_average=False)  # the losses are summed for each minibatch
+        self.switch_loss_criterion = nn.BCEWithLogitsLoss(size_average=False)  # the losses are summed for each minibatch
 
     def _make_shard_state(self, batch, output, range_, attns):
         """ See base class for args description. """
@@ -223,11 +224,11 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         """
         target = target.view(-1)
         align = align.view(-1)
-        scores, p_copy = self.generator(self._bottle(output),
+        scores, p_copy, logits_copy = self.generator(self._bottle(output),
                                 self._bottle(copy_attn),
                                 batch.src_map, align, ptrs)
         loss = self.criterion(scores, align, target)
-        switch_loss = self.switch_loss_criterion(p_copy, align.ne(0).float().view(-1, 1))
+        switch_loss = self.switch_loss_criterion(logits_copy, align.ne(0).float().view(-1, 1))
         scores_data = scores.data.clone()
         scores_data = onmt.io.TextDataset.collapse_copy_scores(
                 self._unbottle(scores_data, batch.batch_size),
@@ -300,14 +301,14 @@ class CopyGeneratorLossComputeV2(CopyGeneratorLossCompute):
         """
         target = target.view(-1)
         align = align.view(-1)
-        scores, p_copy = self.generator(self._bottle(output),
+        scores, p_copy, logits_copy = self.generator(self._bottle(output),
                                 self._bottle(copy_attn),
                                 batch.src_map, align, ptrs)
         loss = self.criterion(scores, align, target)
         tbr_loss = None
         if table_attn is not None:
             tbr_loss = self.table_recon_criterion(self._bottle(table_attn), align, target)
-        switch_loss = self.switch_loss_criterion(p_copy, align.ne(0).float().view(-1, 1))
+        switch_loss = self.switch_loss_criterion(logits_copy, align.ne(0).float().view(-1, 1))
         scores_data = scores.data.clone()
         scores_data = onmt.io.TextDataset.collapse_copy_scores(
                 self._unbottle(scores_data, batch.batch_size),

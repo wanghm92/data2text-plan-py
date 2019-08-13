@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from onmt.Utils import aeq, sequence_mask
 
@@ -218,7 +217,7 @@ class GlobalSelfAttention(nn.Module):
             # attn_h = F.elu(self.dropout(attn_h) + input, 0.1)
 
             # content selection gate
-            attn_h = F.sigmoid(attn_h).mul(input)
+            attn_h = torch.sigmoid(attn_h).mul(input)
 
         if one_step:
             attn_h = attn_h.squeeze(1)

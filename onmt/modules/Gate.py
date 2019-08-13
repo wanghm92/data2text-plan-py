@@ -28,14 +28,13 @@ class ContextGate(nn.Module):
         super(ContextGate, self).__init__()
         input_size = embeddings_size + decoder_size + attention_size
         self.gate = nn.Linear(input_size, output_size, bias=True)
-        self.sig = nn.Sigmoid()
         self.source_proj = nn.Linear(attention_size, output_size)
         self.target_proj = nn.Linear(embeddings_size + decoder_size,
                                      output_size)
 
     def forward(self, prev_emb, dec_state, attn_state):
         input_tensor = torch.cat((prev_emb, dec_state, attn_state), dim=1)
-        z = self.sig(self.gate(input_tensor))
+        z = torch.sigmoid(self.gate(input_tensor))
         proj_source = self.source_proj(attn_state)
         proj_target = self.target_proj(
             torch.cat((prev_emb, dec_state), dim=1))

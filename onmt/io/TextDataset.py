@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from collections import Counter
-from itertools import chain
+from itertools import chain, combinations
 import io
 import codecs
 import sys
@@ -63,6 +63,8 @@ class TextDataset(ONMTDatasetBase):
                 content = f.readlines()
             pointers = [x.strip() for x in content]
 
+        edges = None
+        print("Reading edges from {}".format(edge_file))
         if edge_file is not None:
             with jsonlines.open(edge_file, 'r') as f:
                 edges = [i for i in f.iter(type=dict, skip_invalid=True)]
@@ -407,6 +409,20 @@ class TextDataset(ONMTDatasetBase):
                     example["edge_left"] = None
                     example["edge_right"] = None
                     example["edge_labels"] = None
+
+                #     indices = list(range(len(example['src1'])))
+                #     dense_pairs = combinations(indices, 2)
+                #     edge_left = []
+                #     edge_right = []
+                #     edge_labels = []
+                #     for left, right in dense_pairs:
+                #         edge_left.append(int(left))
+                #         edge_right.append(int(right))
+                #         edge_labels.append('has')
+                #
+                #     example["edge_left"] = torch.LongTensor(edge_left+edge_right)
+                #     example["edge_right"] = torch.LongTensor(edge_right+edge_left)
+                #     example["edge_labels"] = edge_labels
 
             yield example
 

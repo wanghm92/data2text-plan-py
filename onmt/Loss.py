@@ -14,7 +14,7 @@ import onmt.io
 
 # TGT_VOCAB_SIZE = 606
 # TGT_VOCAB_SIZE = 580
-TGT_VOCAB_SIZE = 634  # TODO this should not be hard coded
+TGT_VOCAB_SIZE = 638  # TODO this should not be hard coded
 class LossComputeBase(nn.Module):
     """
     Class for managing efficient loss computation. Handles
@@ -194,6 +194,7 @@ class NMTLossCompute(LossComputeBase):
         if self.decoder_type == 'pointer':
             return {
                 "output": attns['std'],
+                # ! NOTE: range_ is 0 to target_size for tgt1_planning
                 "target": batch.tgt1_planning[range_[0] + 1: range_[1]]
             }
         else:

@@ -219,7 +219,8 @@ class TextDataset(ONMTDatasetBase):
         """
         fields = {}
 
-        #! NOTE: sequential=False --> assumed to be the same size and no padding
+        #! NOTE: PAD_WORD is <blank>, different from the default <pad> used in torchtext/BoxField
+        #! NOTE: sequential=False --> assumed to be the same size and no padding, here passed for building vocab
         fields["src1"] = BoxField(
             sequential=False,
             init_token=BOS_WORD,
@@ -230,20 +231,23 @@ class TextDataset(ONMTDatasetBase):
             fields["src1_feat_" + str(j)] = \
                 BoxField(sequential=False, pad_token=PAD_WORD)
 
+        #! NOTE: INIT/EOS are None --> no pre/appending and not included in vocab
         fields["edge_labels"] = BoxField(
             pad_token=PAD_WORD,
             include_lengths=True
         )
+        # ! NOTE: PAD_INDEX for <blank>
         fields["edge_left"] = BoxField(
             use_vocab=False,
             pad_token=PAD_INDEX
         )
+        # ! NOTE: PAD_INDEX for <blank>
         fields["edge_right"] = BoxField(
             use_vocab=False,
             pad_token=PAD_INDEX
         )
 
-        #! NOTE BOS_INDEX, EOS_INDEX, PAD_INDEX are prepend/appended to the planning sequence
+        #! NOTE: PAD_INDEX for <blank> BOS_INDEX for <s>, EOS_INDEX for </s> are the positions of the pre/appended to the planning sequence
         fields["tgt1_planning"] = BoxField(
             use_vocab=False,
             init_token=BOS_INDEX,

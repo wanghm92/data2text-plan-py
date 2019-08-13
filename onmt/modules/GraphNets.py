@@ -81,7 +81,8 @@ class GATConv(MessagePassing):
         """"""
         if size is None and torch.is_tensor(x):
             edge_index, _ = remove_self_loops(edge_index)
-            edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+            #! NOTE self loops are removed for now
+            # edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
 
         if torch.is_tensor(x):
             x = torch.matmul(x, self.weight)

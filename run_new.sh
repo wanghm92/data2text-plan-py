@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
+##################################################################################################
 PY3='/mnt/cephfs2/nlp/hongmin.wang/anaconda3/envs/pt11py37/bin/python'
 cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
+echo "current working directory:"
+pwd
+
+###################################################################################################
+echo "Checking GPU availabilities"
 tot_gpus=`nvidia-smi -q|grep "Attached GPUs"|awk '{print $NF-1}'`
 gpu_ids=`nvidia-smi -q |grep -e "Minor" -e "Process ID" | grep -B 1 Process|grep Minor|awk '{print $NF}'`
 use_gpu=-1
@@ -17,40 +23,41 @@ fi
 echo use gpu card $use_gpu
 
 export CUDA_VISIBLE_DEVICES=$use_gpu
+##################################################################################################
 
 DATA=aaai
 echo $DATA
-SUFFIX=extend
+SUFFIX=ncpcc
 echo $SUFFIX
 BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_$SUFFIX
 echo $BASE
 #IDENTIFIER=newcc-final
 # IDENTIFIER=newcc-trl-1e-1
-IDENTIFIER=gat_$DATA
+IDENTIFIER=gat_trl_$DATA
 echo $IDENTIFIER
 
-TRAIN_SRC1=$BASE/train/src_train.norm.trim.txt
-TRAIN_TGT1=$BASE/train/train_content_plan_ids.txt
+TRAIN_SRC1=$BASE/train/src_train.norm.trim.ncp.full.txt
+TRAIN_TGT1=$BASE/train/train_content_plan_ids.ncp.full.txt
 TRAIN_SRC2=$BASE/train/train_content_plan_tks.txt
 TRAIN_TGT2=$BASE/train/tgt_train.norm.mwe.trim.txt
 TRAIN_PTR=$BASE/train/train_ptrs.txt
-TRAIN_EDGE=$BASE/train/edge_combo_train.jsonl
+TRAIN_EDGE=$BASE/train/edges_train.ncp.jsonl
 
 wc $TRAIN_SRC1 $TRAIN_TGT1 $TRAIN_SRC2 $TRAIN_TGT2 $TRAIN_PTR
 
-VALID_SRC1=$BASE/valid/src_valid.norm.trim.txt
-VALID_TGT1=$BASE/valid/valid_content_plan_ids.txt
+VALID_SRC1=$BASE/valid/src_valid.norm.trim.ncp.full.txt
+VALID_TGT1=$BASE/valid/valid_content_plan_ids.ncp.full.txt
 VALID_SRC2=$BASE/valid/valid_content_plan_tks.txt
 VALID_TGT2=$BASE/valid/tgt_valid.norm.mwe.trim.txt
-VALID_EDGE=$BASE/valid/edge_combo_valid.jsonl
+VALID_EDGE=$BASE/valid/edges_valid.ncp.jsonl
 
 wc $VALID_SRC1 $VALID_TGT1 $VALID_SRC2 $VALID_TGT2
 
-TEST_SRC1=$BASE/test/src_test.norm.trim.txt
-TEST_TGT1=$BASE/test/test_content_plan_ids.txt
+TEST_SRC1=$BASE/test/src_test.norm.trim.ncp.full.txt
+TEST_TGT1=$BASE/test/test_content_plan_ids.ncp.full.txt
 TEST_SRC2=$BASE/test/test_content_plan_tks.txt
 TEST_TGT2=$BASE/test/tgt_test.norm.mwe.trim.txt
-TEST_EDGE_LEFT=$BASE/test/edge_combo_test.jsonl
+TEST_EDGE_LEFT=$BASE/test/edges_test.ncp.jsonl
 
 wc $TEST_SRC1 $TEST_TGT1 $TEST_SRC2 $TEST_TGT2
 
@@ -97,12 +104,12 @@ mkdir -p $SUM_OUT
 VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dataset/new_ncpcc
 
 ####################################################################################################
-#echo "run preprocessing"
-#python preprocess.py -train_src1 $TRAIN_SRC1 -train_tgt1 $TRAIN_TGT1 -train_src2 $TRAIN_SRC2 -train_tgt2 $TRAIN_TGT2 -train_edge $TRAIN_EDGE -valid_src1 $VALID_SRC1 -valid_tgt1 $VALID_TGT1 -valid_src2 $VALID_SRC2 -valid_tgt2 $VALID_TGT2 -valid_edge $VALID_EDGE -save_data $PREPRO/roto-$IDENTIFIER -src_seq_length 1000 -tgt_seq_length 1000 -dynamic_dict -train_ptr $TRAIN_PTR
-#
+echo "run preprocessing"
+$PY3 preprocess.py -train_src1 $TRAIN_SRC1 -train_tgt1 $TRAIN_TGT1 -train_src2 $TRAIN_SRC2 -train_tgt2 $TRAIN_TGT2 -train_edge $TRAIN_EDGE -valid_src1 $VALID_SRC1 -valid_tgt1 $VALID_TGT1 -valid_src2 $VALID_SRC2 -valid_tgt2 $VALID_TGT2 -valid_edge $VALID_EDGE -save_data $PREPRO/roto-$IDENTIFIER -src_seq_length 1000 -tgt_seq_length 1000 -dynamic_dict -train_ptr $TRAIN_PTR
+
 ####################################################################################################
 echo "run training"
-$PY3 train.py -data $PREPRO/roto-$DATA -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -encoder_type graph
+$PY3 train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -encoder_type1 graph -trl
 
 ###################################################################################################
 # echo " ****** Evaluation ****** "

@@ -116,6 +116,7 @@ class GraphEncoder(EncoderBase):
         # self.conv = GCNConv(emb_size, emb_size)
         # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
         self.conv = onmt.modules.GATConv(emb_size, emb_size)
+        self.linear_out = nn.Linear(emb_size * 2, emb_size, bias=False)
 
     def _construct_data_list(self, edges, emb):
         edge_left, edge_right, edge_label, num_edge = edges
@@ -128,7 +129,7 @@ class GraphEncoder(EncoderBase):
                     torch.split(emb, 1, dim=1)):
             edge_index = torch.cat([left, right], dim=1).t().contiguous()[:, :length.item()]
             x = x.squeeze(1)
-            label = label.squeeze(1)[:length.item()]-2  #! NOTE: here -2 is for index_select
+            label = label.squeeze(1)[:length.item()]-2  #! NOTE: here -2 (for <unk> and <blank>) is for index_select in RGCN
             data = Data(x=x, edge_index=edge_index, edge_label=label)
             data_list.append(data)
         return data_list
@@ -141,8 +142,14 @@ class GraphEncoder(EncoderBase):
         out = out.reshape(shape)
         return out
 
+    def _content_gating(self, emb, graph_node_vectors):
+        concat_c = torch.cat([graph_node_vectors, emb], 2)
+        r_att = self.linear_out(concat_c)
+        r_cs = torch.sigmoid(r_att).mul(emb)
+        return r_cs
+
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
-        "See :obj:`EncoderBase.forward()`"
+
         src, edges = src
         self._check_args(src, edges, lengths, encoder_state)
         emb = self.dropout(self.embeddings(src))
@@ -151,7 +158,9 @@ class GraphEncoder(EncoderBase):
 
         data_list = self._construct_data_list(edges, emb)
         graph_batch = Batch.from_data_list(data_list)
-        encoder_output = self._node_encoding(graph_batch, emb.size())
+        graph_node_vectors = self._node_encoding(graph_batch, emb.size())
+
+        encoder_output = self._content_gating(emb, graph_node_vectors)
 
         mean = encoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
         memory_bank = encoder_output
@@ -678,12 +687,12 @@ class InputFeedRNNDecoder(RNNDecoderBase):
                     memory_lengths=memory_lengths)
                 attns["table"] += [table_attn]
 
+            # print("[InputFeedRNNDecoder] self.context_gate = {}".format(self.context_gate))
             if self.context_gate is not None:
                 # TODO: context gate should be employed
                 # instead of second RNN transform.
-                decoder_output = self.context_gate(
-                    decoder_input, rnn_output, decoder_output
-                )
+                decoder_output = self.context_gate(decoder_input, rnn_output, decoder_output)
+
             decoder_output = self.dropout(decoder_output)
             input_feed = decoder_output
 
@@ -762,7 +771,7 @@ class NMTModel(nn.Module):
         """
         #! NOTE: src is indices for stage1 and vectors for stage2
 
-        tgt = tgt[:-1]  #! NOTE: exclude last target from inputs
+        tgt = tgt[:-1]  #! NOTE: exclude </s>
 
         trimmed_tbl_embs = None
         edges = None

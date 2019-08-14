@@ -134,7 +134,7 @@ def main():
     gold_score_total, gold_words_total = 0, 0
     stage1 = opt.stage1
     for batch in tqdm(data_iter):
-        # NOTE
+        #! NOTE translation starts here
         batch_data = translator.translate_batch(batch, data, stage1)
         translations = builder.from_batch(batch_data, stage1)
 

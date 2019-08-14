@@ -111,7 +111,12 @@ class Translator(object):
         self.tt = torch.cuda if self.cuda else torch
         src_lengths = self.tt.LongTensor(batch.src1.size()[1]).fill_(batch.src1.size()[0])
 
-        enc_states, memory_bank = self.model.encoder(src, src_lengths)
+        edges = None
+        if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
+            edge_labels, num_edges = batch.edge_labels
+            edges = (batch.edge_left, batch.edge_right, edge_labels, num_edges)
+
+        enc_states, memory_bank = self.model.encoder((src, edges), src_lengths)
         if isinstance(memory_bank, tuple):
             memory_bank, _ = memory_bank
         src_lengths = torch.Tensor(batch_size).type_as(memory_bank.data) \
@@ -125,12 +130,11 @@ class Translator(object):
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
                             zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
-            enc_states, memory_bank = self.model2.encoder(emb, src_lengths)
+            enc_states, memory_bank = self.model2.encoder((emb, None), src_lengths)
 
             model = self.model2
 
-        dec_states = model.decoder.init_decoder_state(
-                                        src, memory_bank, enc_states)
+        dec_states = model.decoder.init_decoder_state(src, memory_bank, enc_states)  # src is useless
 
         # (2) Repeat src objects `beam_size` times.
         src_map = rvar(batch.src_map.data) \

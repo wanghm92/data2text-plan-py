@@ -71,17 +71,21 @@ class TextDataset(ONMTDatasetBase):
 
         # dictionaries are joint together
         if tgt2_examples_iter is not None:
+            #! for training
             examples_iter = (self._join_dicts(src, tgt, src2, tgt2) for src, tgt, src2, tgt2 in
                                 zip(src_examples_iter, tgt_examples_iter, src2_examples_iter, tgt2_examples_iter))
         elif src2_examples_iter is not None:
+            #! for stage2 translation
             examples_iter = (self._join_dicts(src, tgt, src2) for src, tgt, src2 in
                                 zip(src_examples_iter, tgt_examples_iter, src2_examples_iter))
         else:
+            #! for stage1 translation
             examples_iter = src_examples_iter
 
-        if dynamic_dict and src2_examples_iter is not None:
+        if dynamic_dict:
             # additional field keys are added
-            examples_iter = self._dynamic_dict(examples_iter, pointers=pointers, edges=edges)
+            add_src_map = src2_examples_iter is not None  #! True for training and stage2 translation
+            examples_iter = self._dynamic_dict(examples_iter, pointers=pointers, edges=edges, add_src_map=add_src_map)
 
         # Peek at the first to see which fields are used.
         ex, examples_iter = self._peek(examples_iter)
@@ -119,6 +123,74 @@ class TextDataset(ONMTDatasetBase):
         super(TextDataset, self).__init__(
             out_examples, out_fields, filter_pred
         )
+
+    def _dynamic_dict(self, examples_iter, pointers=None, edges=None, add_src_map=True):
+        print("add_src_map = {}".format(add_src_map))
+
+        loop_index = -1
+
+        for example in examples_iter:
+
+            if add_src_map:
+                src = example["src2"]  #! NOTE: ratish's content plan contains unique records
+                loop_index += 1
+                src_vocab = torchtext.vocab.Vocab(Counter(src), specials=[UNK_WORD, PAD_WORD])
+                self.src_vocabs.append(src_vocab)
+                # Mapping source tokens to indices in the dynamic dict.
+                src_map = torch.LongTensor([src_vocab.stoi[w] for w in src])
+                example["src_map"] = src_map
+
+            if "tgt2" in example:
+                #! 
+                tgt = example["tgt2"]
+                mask = torch.LongTensor(
+                    [0] + [src_vocab.stoi[w] for w in tgt] + [0])  # 0 for unk
+                example["alignment"] = mask
+
+                if pointers is not None and loop_index < len(pointers):
+                    pointer_entries = pointers[loop_index].split()
+                    pointer_entries = [int(entry.split(",")[0]) for entry in pointer_entries]
+                    #! NOTE: overriding the mask above
+                    mask = torch.LongTensor([0] + [src_vocab.stoi[w] if i in pointer_entries
+                                                    else src_vocab.stoi[UNK_WORD] for i, w in enumerate(tgt)] + [0])
+                    example["alignment"] = mask
+                    max_len = 0
+                    line_tuples = []
+                    for pointer in pointers[loop_index].split():
+                        val = [int(entry) for entry in pointer.split(",")]
+                        if len(val)>max_len:
+                            max_len = len(val)
+                        line_tuples.append(val)
+                    num_rows = len(line_tuples)+2   #+2 for storing the length of the source and target sentence
+                    ptrs = torch.zeros(num_rows, max_len+1).long()  #last col is for storing the size of the row
+                    for j in range(ptrs.size(0)-2): #iterating until row-1 as row contains the length of the sentence
+                        for k in range(len(line_tuples[j])):
+                            ptrs[j][k]=line_tuples[j][k]
+                        ptrs[j][max_len] = len(line_tuples[j])
+                    ptrs[ptrs.size(0)-2][0] = len(src)
+                    ptrs[ptrs.size(0)-1][0] = len(tgt)
+                    example["ptrs"] = ptrs
+                else:
+                    example["ptrs"] = None
+
+            if edges is not None:
+                edge_left = []
+                edge_right = []
+                edge_labels = []
+                for k, v in edges[loop_index].items():
+                    left, right = k.split(',')
+                    edge_left.append(int(left))
+                    edge_right.append(int(right))
+                    edge_labels.append(v)
+                example["edge_left"] = torch.LongTensor(edge_left)
+                example["edge_right"] = torch.LongTensor(edge_right)
+                example["edge_labels"] = edge_labels
+            else:
+                example["edge_left"] = None
+                example["edge_right"] = None
+                example["edge_labels"] = None
+
+            yield example
 
     @staticmethod
     def collapse_copy_scores(scores, batch, tgt_vocab, src_vocabs):
@@ -348,83 +420,6 @@ class TextDataset(ONMTDatasetBase):
             _, _, num_feats = TextDataset.extract_text_features(f_line)
 
         return num_feats
-
-    # Below are helper functions for intra-class use only.
-    def _dynamic_dict(self, examples_iter, pointers=None, edges=None):
-        loop_index = -1
-        for example in examples_iter:
-            src = example["src2"]  #! NOTE: ratish's content plan contains unique records
-            loop_index += 1
-            src_vocab = torchtext.vocab.Vocab(Counter(src), specials=[UNK_WORD, PAD_WORD])
-            self.src_vocabs.append(src_vocab)
-            # Mapping source tokens to indices in the dynamic dict.
-            src_map = torch.LongTensor([src_vocab.stoi[w] for w in src])
-            example["src_map"] = src_map
-            if "tgt2" in example:
-                tgt = example["tgt2"]
-                mask = torch.LongTensor(
-                    [0] + [src_vocab.stoi[w] for w in tgt] + [0])  # 0 for unk
-                example["alignment"] = mask
-
-                if pointers is not None and loop_index < len(pointers):
-                    pointer_entries = pointers[loop_index].split()
-                    pointer_entries = [int(entry.split(",")[0]) for entry in pointer_entries]
-                    #! NOTE: overriding the mask above
-                    mask = torch.LongTensor([0] + [src_vocab.stoi[w] if i in pointer_entries
-                                                    else src_vocab.stoi[UNK_WORD] for i, w in enumerate(tgt)] + [0])
-                    example["alignment"] = mask
-                    max_len = 0
-                    line_tuples = []
-                    for pointer in pointers[loop_index].split():
-                        val = [int(entry) for entry in pointer.split(",")]
-                        if len(val)>max_len:
-                            max_len = len(val)
-                        line_tuples.append(val)
-                    num_rows = len(line_tuples)+2   #+2 for storing the length of the source and target sentence
-                    ptrs = torch.zeros(num_rows, max_len+1).long()  #last col is for storing the size of the row
-                    for j in range(ptrs.size(0)-2): #iterating until row-1 as row contains the length of the sentence
-                        for k in range(len(line_tuples[j])):
-                            ptrs[j][k]=line_tuples[j][k]
-                        ptrs[j][max_len] = len(line_tuples[j])
-                    ptrs[ptrs.size(0)-2][0] = len(src)
-                    ptrs[ptrs.size(0)-1][0] = len(tgt)
-                    example["ptrs"] = ptrs
-                else:
-                    example["ptrs"] = None
-
-                #! NOTE: edges are added here
-                if edges is not None:
-                    edge_left = []
-                    edge_right = []
-                    edge_labels = []
-                    for k, v in edges[loop_index].items():
-                        left, right = k.split(',')
-                        edge_left.append(int(left))
-                        edge_right.append(int(right))
-                        edge_labels.append(v)
-                    example["edge_left"] = torch.LongTensor(edge_left)
-                    example["edge_right"] = torch.LongTensor(edge_right)
-                    example["edge_labels"] = edge_labels
-                else:
-                    example["edge_left"] = None
-                    example["edge_right"] = None
-                    example["edge_labels"] = None
-
-                #     indices = list(range(len(example['src1'])))
-                #     dense_pairs = combinations(indices, 2)
-                #     edge_left = []
-                #     edge_right = []
-                #     edge_labels = []
-                #     for left, right in dense_pairs:
-                #         edge_left.append(int(left))
-                #         edge_right.append(int(right))
-                #         edge_labels.append('has')
-                #
-                #     example["edge_left"] = torch.LongTensor(edge_left+edge_right)
-                #     example["edge_right"] = torch.LongTensor(edge_right+edge_left)
-                #     example["edge_labels"] = edge_labels
-
-            yield example
 
 
 class ShardedTextCorpusIterator(object):

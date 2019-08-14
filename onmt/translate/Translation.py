@@ -34,6 +34,7 @@ class TranslationBuilder(object):
             vocab = self.fields["tgt2"].vocab
         tokens = []
         for tok in pred:
+            tok = tok.cpu().item()
             if stage1:
                 tokens.append(tok)
             else:

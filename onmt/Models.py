@@ -30,7 +30,7 @@ class EncoderBase(nn.Module):
     Base encoder class. Specifies the interface used by different encoder types
     and required by :obj:`onmt.Models.NMTModel`.
     """
-    def _check_args(self, input, edges=None, lengths=None, hidden=None):
+    def _check_args(self, input, edges=None, lengths=None):
         if isinstance(self, GraphEncoder) and edges is None:
             raise ValueError('edges cannot be None for GraphEncoder')
         s_len, n_batch, n_feats = input.size()
@@ -63,15 +63,15 @@ class MeanEncoder(EncoderBase):
         embeddings (:obj:`onmt.modules.Embeddings`): embedding module to use
     """
     def __init__(
-            self, num_layers, embeddings, emb_size,
+            self, num_layers, src_bundle, emb_size,
             dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False
     ):
         super(MeanEncoder, self).__init__()
         self.num_layers = num_layers
         self.table_embeddings = None
-        if isinstance(embeddings, tuple):
-            embeddings, table_embeddings, _ = embeddings
-            self.table_embeddings = table_embeddings
+        assert isinstance(src_bundle, tuple)
+        embeddings, table_embeddings, _ = src_bundle
+        self.table_embeddings = table_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
         self.no_self_attn = no_self_attn
@@ -80,9 +80,9 @@ class MeanEncoder(EncoderBase):
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
         "See :obj:`EncoderBase.forward()`"
-        if isinstance(src, tuple):
-            src, _ = src
-        self._check_args(src, lengths=lengths, hidden=encoder_state)
+        assert isinstance(src, tuple)
+        src, _ = src
+        self._check_args(src, lengths=lengths)
 
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
@@ -105,10 +105,11 @@ class GraphEncoder(EncoderBase):
     Returns:
         [type] -- [description]
     """
-    def __init__(self, num_layers, embeddings, emb_size, dropout=0.0):
+    def __init__(self, num_layers, src_bundle, emb_size, dropout=0.0):
         super(GraphEncoder, self).__init__()
         self.num_layers = num_layers
-        embeddings, table_embeddings, edge_embeddings = embeddings
+        assert isinstance(src_bundle, tuple)
+        embeddings, table_embeddings, edge_embeddings = src_bundle
         self.table_embeddings = table_embeddings
         self.edge_embeddings = edge_embeddings
         self.embeddings = embeddings
@@ -149,9 +150,9 @@ class GraphEncoder(EncoderBase):
         return r_cs
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
-
+        assert isinstance(src, tuple)
         src, edges = src
-        self._check_args(src, edges, lengths, encoder_state)
+        self._check_args(src, edges=edges, lengths=lengths)
         emb = self.dropout(self.embeddings(src))
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch_size, emb_dim = emb.size()
@@ -209,9 +210,9 @@ class RNNEncoder(EncoderBase):
 
     def forward(self, src, lengths=None, encoder_state=None):
         "See :obj:`EncoderBase.forward()`"
-        if isinstance(src, tuple):
-            src, _ = src
-        self._check_args(src, lengths, encoder_state)
+        assert isinstance(src, tuple)
+        src, _ = src  #! _ is edges
+        self._check_args(src, lengths=lengths)
 
         emb = src
         s_len, batch, emb_dim = emb.size()
@@ -386,10 +387,8 @@ class RNNDecoderBase(nn.Module):
                 * attns: distribution over src at each tgt
                         `[tgt_len x batch x src_len]`.
         """
-        # Check
-        trimmed_tbl_embs = None
-        if isinstance(memory_bank, tuple):
-            memory_bank, trimmed_tbl_embs = memory_bank
+        assert isinstance(memory_bank, tuple)
+        memory_bank, trimmed_tbl_embs = memory_bank
 
         assert isinstance(state, RNNDecoderState)
         tgt_len, tgt_batch, _ = tgt.size()
@@ -470,8 +469,8 @@ class PointerRNNDecoder(RNNDecoderBase):
                             type of attention Tensor array of every time
                             step from the decoder.
         """
-        if isinstance(memory_bank, tuple):
-            memory_bank, _ = memory_bank
+        assert isinstance(memory_bank, tuple)
+        memory_bank, _ = memory_bank  #! _ is table embeddings
 
         assert not self._copy  # TODO, no support yet.
         assert not self._coverage  # TODO, no support yet.
@@ -640,9 +639,8 @@ class InputFeedRNNDecoder(RNNDecoderBase):
         See StdRNNDecoder._run_forward_pass() for description
         of arguments and return values.
         """
-        trimmed_tbl_embs = None
-        if isinstance(memory_bank, tuple):
-            memory_bank, trimmed_tbl_embs = memory_bank
+        assert isinstance(memory_bank, tuple)
+        memory_bank, trimmed_tbl_embs = memory_bank
 
         # Additional args check.
         input_feed = state.input_feed.squeeze(0)
@@ -773,24 +771,25 @@ class NMTModel(nn.Module):
 
         tgt = tgt[:-1]  #! NOTE: exclude </s>
 
-        trimmed_tbl_embs = None
-        edges = None
-        if isinstance(src, tuple):
-            src, trimmed_tbl_embs, edges = src
+        assert isinstance(src, tuple)
+        src, trimmed_tbl_embs, edges = src
 
         enc_final, memory_bank = self.encoder((src, edges), lengths)
 
         enc_embs = None
         if isinstance(memory_bank, tuple):
+            #! stage1: Mean or GraphEncoder
             memory_bank, enc_embs = memory_bank
 
         enc_state = self.decoder.init_decoder_state(src, memory_bank, enc_final)
 
         decoder_outputs, dec_state, attns = \
-            self.decoder(tgt, (memory_bank, trimmed_tbl_embs),
-                            enc_state if dec_state is None
-                            else dec_state,
-                            memory_lengths=lengths)
+            self.decoder(
+                tgt,
+                (memory_bank, trimmed_tbl_embs),
+                enc_state if dec_state is None else dec_state,
+                memory_lengths=lengths
+            )
         if self.multigpu:
             # Not yet supported on multi-gpu
             dec_state = None

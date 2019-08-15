@@ -129,18 +129,20 @@ do
         echo $MODEL1
         echo $MODEL2
 
-        echo "--"
+        printf "\n--"
         echo " ****** STAGE 1 ****** "
-        echo $VALID_SRC1
+        echo "input src: $VALID_SRC1"
+        echo "saving to: $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt"
         $PY3 translate.py -model $MODEL1 -src1 $VALID_SRC1 -edges $VALID_EDGE -output $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 80 -gpu 0 -min_length 20 -stage1
 
-        echo " ****** create_content_plan_from_index ****** "
+        printf "\n ****** create_content_plan_from_index ****** "
         $PY3 create_content_plan_from_index.py $VALID_SRC1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.h5-tuples.valid.txt $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
 #
-        echo " ****** STAGE 2 ****** "
+        printf "\n ****** STAGE 2 ****** "
         $PY3 translate.py -model $MODEL1 -model2 $MODEL2 -src1 $VALID_SRC1 -edges $VALID_EDGE -tgt1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -src2 $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt -output $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 850 -min_length 150 -gpu 0
 
-        echo " ****** BLEU ****** "
+        printf "\n ****** BLEU ****** "
+        echo "Reference: $VALID_TGT2"
         perl ~/table2text/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
 
         ###################################################################################################

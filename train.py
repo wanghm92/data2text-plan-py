@@ -20,6 +20,7 @@ import onmt.modules
 from onmt.Utils import use_gpu
 import opts
 
+from pprint import pprint
 import logging
 program = os.path.basename(sys.argv[0])
 L = logging.getLogger(program)
@@ -414,7 +415,6 @@ def build_optim(model, checkpoint):
 
 
 def main():
-    from pprint import pprint
     pprint(vars(opt))
     # Load checkpoint if we resume from a previous training.
     if opt.train_from:

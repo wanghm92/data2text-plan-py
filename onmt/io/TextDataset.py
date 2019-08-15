@@ -141,7 +141,7 @@ class TextDataset(ONMTDatasetBase):
                 example["src_map"] = src_map
 
             if "tgt2" in example:
-                #! 
+                #! only available during training
                 tgt = example["tgt2"]
                 mask = torch.LongTensor(
                     [0] + [src_vocab.stoi[w] for w in tgt] + [0])  # 0 for unk
@@ -174,6 +174,7 @@ class TextDataset(ONMTDatasetBase):
                     example["ptrs"] = None
 
             if edges is not None:
+                #! only add edge keys to fields when edges are read from the file
                 edge_left = []
                 edge_right = []
                 edge_labels = []
@@ -185,10 +186,6 @@ class TextDataset(ONMTDatasetBase):
                 example["edge_left"] = torch.LongTensor(edge_left)
                 example["edge_right"] = torch.LongTensor(edge_right)
                 example["edge_labels"] = edge_labels
-            else:
-                example["edge_left"] = None
-                example["edge_right"] = None
-                example["edge_labels"] = None
 
             yield example
 

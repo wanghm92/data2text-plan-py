@@ -246,9 +246,10 @@ class Trainer(object):
 
             tgt = batch.tgt1_planning.unsqueeze(2)
             # F-prop through the model.
-            outputs, attns, _, memory_bank = self.model((src, None, edges), tgt, src_lengths)
-            if isinstance(memory_bank, tuple):
-                memory_bank, enc_embs = memory_bank
+            #! here _ is dec_state from stage1, not used
+            outputs, attns, _, memory_bundle = self.model((src, None, edges), tgt, src_lengths)
+            assert isinstance(memory_bundle, tuple)
+            memory_bank, enc_embs = memory_bundle
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
                     batch, outputs, attns, stage1=True)
@@ -370,9 +371,9 @@ class Trainer(object):
                 # 2. F-prop all but generator.
                 if self.grad_accum_count == 1:
                     self.model.zero_grad()
-                outputs, attns, dec_state, memory_bank = self.model((src, None, edges), tgt, src_lengths, dec_state)
-                if isinstance(memory_bank, tuple):
-                    memory_bank, tbl_emb = memory_bank
+                outputs, attns, dec_state, memory_bundle = self.model((src, None, edges), tgt, src_lengths, dec_state)
+                assert isinstance(memory_bundle, tuple)
+                memory_bank, tbl_emb = memory_bundle
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,

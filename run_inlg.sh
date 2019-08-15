@@ -1,27 +1,34 @@
 #!/usr/bin/env bash
 PY3='/mnt/cephfs2/nlp/hongmin.wang/anaconda3/envs/pt11py37/bin/python'
 cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
+echo "current working directory:"
+pwd
 
+###################################################################################################
+echo "Checking GPU availabilities"
 tot_gpus=`nvidia-smi -q|grep "Attached GPUs"|awk '{print $NF-1}'`
 gpu_ids=`nvidia-smi -q |grep -e "Minor" -e "Process ID" | grep -B 1 Process|grep Minor|awk '{print $NF}'`
 use_gpu=-1
 for i in `seq 0 ${tot_gpus}` ; do
-  if [[ ! "${gpu_ids}" =~ "${i}" ]]; then
-    use_gpu=$i
-    break
-  fi
+    if [[ ! "${gpu_ids}" =~ "${i}" ]]; then
+        use_gpu=$i
+        break
+    fi
 done
-if [ $use_gpu = -1 ]; then
-  echo "Error! There is no GPU card available"
-  exit 1
+    if [ $use_gpu = -1 ]; then
+        echo "Error! There is no GPU card available"
+        exit 1
 fi
 echo use gpu card $use_gpu
 
 export CUDA_VISIBLE_DEVICES=$use_gpu
+###################################################################################################
 
 BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_inlg/inlg_data/new_ncpcc
 IDENTIFIER=newcc-trl-1e-1
-PREFIX=noselfattn_trl
+PREFIX=full_trl
+echo $BASE
+echo $IDENTIFIER
 echo $PREFIX
 
 TRAIN_SRC1=$BASE/train/src_train.norm.trim.ncp.txt
@@ -63,36 +70,39 @@ VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dat
 #python preprocess.py -train_src1 $TRAIN_SRC1 -train_tgt1 $TRAIN_TGT1 -train_src2 $TRAIN_SRC2 -train_tgt2 $TRAIN_TGT2 -valid_src1 $VALID_SRC1 -valid_tgt1 $VALID_TGT1 -valid_src2 $VALID_SRC2 -valid_tgt2 $VALID_TGT2 -save_data $PREPRO/roto-$IDENTIFIER -src_seq_length 1000 -tgt_seq_length 1000 -dynamic_dict -train_ptr $TRAIN_PTR
 
 ####################################################################################################
-echo "run training"
-$PY3 train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -stage1_no_self_attn -trl
+#echo "run training"
+#$PY3 train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_type1 mean -decoder_type1 pointer -enc_layers1 1 -dec_layers1 1 -encoder_type2 brnn -decoder_type2 rnn -enc_layers2 2 -dec_layers2 2 -batch_size 5 -feat_merge mlp -feat_vec_size 600 -word_vec_size 600 -rnn_size 600 -seed 1234 -epochs 50 -optim adagrad -learning_rate 0.15 -adagrad_accumulator_init 0.1 -report_every 100 -copy_attn -truncated_decoder 100 -gpuid 0 -attn_hidden 64 -reuse_copy_attn -start_decay_at 4 -learning_rate_decay 0.97 -valid_batch_size 5 -tensorboard -tensorboard_log_dir $OUTPUT/events -stage1_no_self_attn -trl
 
 ###################################################################################################
-# echo " ****** Evaluation ****** "
-# for EPOCH in $(seq 19 19)
-# do
-#     for MODEL1 in $(ls $OUTPUT/roto_stage1*_e$EPOCH.pt)
-#     do
+echo " ****** Evaluation ****** "
+for EPOCH in $(seq 19 50)
+do
+    for MODEL1 in $(ls $OUTPUT/roto_stage1*_e$EPOCH.pt)
+    do
 
-#         for MODEL2 in $(ls $OUTPUT/roto_stage2*_e$EPOCH.pt)
-#         do
+        for MODEL2 in $(ls $OUTPUT/roto_stage2*_e$EPOCH.pt)
+        do
 
-#        echo "--"
-#        echo $MODEL1
-#        echo $MODEL2
-#
-#        echo "--"
-#        echo " ****** STAGE 1 ****** "
-#        echo $VALID_SRC1
-#        python translate.py -model $MODEL1 -src1 $VALID_SRC1 -output $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 80 -gpu 0 -min_length 20 -stage1
-#
-#        echo " ****** create_content_plan_from_index ****** "
-#        python create_content_plan_from_index.py $VALID_SRC1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.h5-tuples.valid.txt  $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
-#
-#        echo " ****** STAGE 2 ****** "
-#        python translate.py -model $MODEL1 -model2 $MODEL2 -src1 $VALID_SRC1 -tgt1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -src2 $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt -output $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 850 -min_length 150 -gpu 0
-#
-#        echo " ****** BLEU ****** "
-#        perl ~/onmt-tf-whm/third_party/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
+        echo "--"
+        echo " ****** Using Models: "
+        echo $MODEL1
+        echo $MODEL2
+
+        printf "\n--"
+        echo " ****** STAGE 1 ****** "
+        echo "input src: $VALID_SRC1"
+        echo "saving to: $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt"
+        $PY3 translate.py -model $MODEL1 -src1 $VALID_SRC1 -output $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 80 -gpu 0 -min_length 20 -stage1
+
+        printf "\n ****** create_content_plan_from_index ****** "
+        $PY3 create_content_plan_from_index.py $VALID_SRC1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.h5-tuples.valid.txt  $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
+
+        printf "\n ****** STAGE 2 ****** "
+        $PY3 translate.py -model $MODEL1 -model2 $MODEL2 -src1 $VALID_SRC1 -tgt1 $SUM_OUT/roto_stage1_$IDENTIFIER.e$EPOCH.valid.txt -src2 $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt -output $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt -batch_size 10 -max_length 850 -min_length 150 -gpu 0
+
+        printf "\n ****** BLEU ****** "
+        echo "Reference: $VALID_TGT2"
+        perl /mnt/cephfs2/nlp/hongmin.wang/table2text/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
 
         # cd /mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/evaluate
         # echo " ****** RG CS CO ****** "
@@ -127,6 +137,6 @@ $PY3 train.py -data $PREPRO/roto-$IDENTIFIER -save_model $OUTPUT/roto -encoder_t
 #        $PY3 evaluate.py --dataset test --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.test.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.test.txt
 #        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
 
-#         done
-#     done
-# done
+        done
+    done
+done

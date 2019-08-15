@@ -160,9 +160,9 @@ def preprocess_opts(parser):
     group.add_argument('-valid_tgt1', required=True,
                         help="Path to the validation target data")
 
-    group.add_argument('-train_edge', required=True,
+    group.add_argument('-train_edge', default=None,
                         help="Path to the training graph edge file")
-    group.add_argument('-valid_edge', required=True,
+    group.add_argument('-valid_edge', default=None,
                         help="Path to the validation graph edge file")
 
     group.add_argument('-train_src2', required=True,
@@ -438,7 +438,7 @@ def translate_opts(parser):
                         sequence)""")
     group.add_argument('-tgt2',
                         help='True target sequence (optional)')
-    group.add_argument('-edges', required=True,
+    group.add_argument('-edges', default=None,
                         help="Path to the graph edge file")
     group.add_argument('-output', default='pred.txt',
                         help="""Path to output the predictions (each line will

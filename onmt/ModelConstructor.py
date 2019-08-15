@@ -14,6 +14,7 @@ from onmt.Models import NMTModel, MeanEncoder, RNNEncoder, PointerRNNDecoder,\
 from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, TransformerEncoder, \
     TransformerDecoder, CNNEncoder, CNNDecoder, AudioEncoder
 from onmt.Utils import use_gpu
+from pprint import pprint
 
 def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_word=False):
     """
@@ -47,7 +48,7 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         discard_word=discard_word)
 
 
-def make_encoder(opt, embeddings, stage1=True):
+def make_encoder(opt, src_bundle, stage1=True):
     """
     Various encoder dispatcher function.
     Args:
@@ -55,12 +56,8 @@ def make_encoder(opt, embeddings, stage1=True):
         embeddings (Embeddings): vocab embeddings for this encoder.
         stage1: stage1 encoder
     """
-    table_embeddings = None
-    edge_embeddings = None
-    if isinstance(embeddings, tuple):
-        embeddings, table_embeddings, edge_embeddings = embeddings
+    assert isinstance(src_bundle, tuple)
     if stage1:
-        src_bundle = (embeddings, table_embeddings, edge_embeddings)
         print("Using ** {} ** encoder, stage1_no_self_attn: {}".format(opt.encoder_type1, opt.stage1_no_self_attn))
         if opt.encoder_type1 == 'mean':
             return MeanEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size,
@@ -71,6 +68,7 @@ def make_encoder(opt, embeddings, stage1=True):
             raise NotImplementedError("encoder_type = {} is not implemented".format(opt.encoder_type))
     else:
         # "rnn" or "brnn"
+        embeddings, _, _ = src_bundle
         return RNNEncoder(
             opt.rnn_type, opt.brnn2, opt.enc_layers2,
             opt.rnn_size, opt.dropout, embeddings,
@@ -117,12 +115,17 @@ def load_test_model(opt, dummy_opt, stage1=False):
         checkpoint['vocab'], data_type=opt.data_type)
 
     model_opt = checkpoint['opt']
+
     for arg in dummy_opt:
         if arg not in model_opt:
             model_opt.__dict__[arg] = dummy_opt[arg]
+    print("\n ** Options:")
+    pprint(vars(model_opt))
 
     model = make_base_model(model_opt, fields,
                             use_gpu(opt), checkpoint, stage1)
+    print("\n ** Model")
+    print(model)
     model.eval()
     model.generator.eval()
     return fields, model, model_opt
@@ -156,7 +159,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     src_embeddings = make_embeddings(model_opt, src_dict, feature_dicts)
 
     #! edge_embeddings
-    edge_dict = fields['edge_labels'].vocab if 'edge_labels' in fields else None
+    edge_dict = fields['edge_labels'].vocab if model_opt.encoder_type == 'graph' else None
     edge_embeddings = None if edge_dict is None else make_embeddings(model_opt, edge_dict, [])
 
     # --- table-reconstruction ---
@@ -171,10 +174,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
         table_embeddings.ha_lut.weight = src_embeddings.ha_lut.weight
 
     #! make_encoder
-    src_bundle = src_embeddings
     print("edge_embeddings = {}, table_embeddings = {}".format(edge_embeddings, table_embeddings))
-    if edge_embeddings is not None or table_embeddings is not None:
-        src_bundle = (src_embeddings, table_embeddings, edge_embeddings)
+    src_bundle = (src_embeddings, table_embeddings, edge_embeddings)
     encoder = make_encoder(model_opt, src_bundle, stage1)
 
     '''

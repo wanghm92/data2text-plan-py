@@ -159,7 +159,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     src_embeddings = make_embeddings(model_opt, src_dict, feature_dicts)
 
     #! edge_embeddings
-    edge_dict = fields['edge_labels'].vocab if model_opt.encoder_type == 'graph' else None
+    edge_dict = fields['edge_labels'].vocab if model_opt.encoder_type1 == 'graph' else None
     edge_embeddings = None if edge_dict is None else make_embeddings(model_opt, edge_dict, [])
 
     # --- table-reconstruction ---

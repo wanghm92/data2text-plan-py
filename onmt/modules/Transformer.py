@@ -20,8 +20,7 @@ class PositionwiseFeedForward(nn.Module):
 
         Args:
             size (int): the size of input for the first-layer of the FFN.
-            hidden_size (int): the hidden layer size of the second-layer
-                              of the FNN.
+            hidden_size (int): the hidden layer size of the second-layer of the FNN.
             dropout (float): dropout probability(0-1.0).
     """
     def __init__(self, size, hidden_size, dropout=0.1):
@@ -46,8 +45,8 @@ class TransformerEncoderLayer(nn.Module):
 
     Args:
             size(int): the dimension of keys/values/queries in
-                       MultiHeadedAttention, also the input size of
-                       the first-layer of the PositionwiseFeedForward.
+                        MultiHeadedAttention, also the input size of
+                        the first-layer of the PositionwiseFeedForward.
             droput(float): dropout probability(0-1.0).
             head_count(int): the number of head for MultiHeadedAttention.
             hidden_size(int): the second-layer of the PositionwiseFeedForward.
@@ -80,38 +79,37 @@ class TransformerEncoder(EncoderBase):
 
     .. mermaid::
 
-       graph BT
-          A[input]
-          B[multi-head self-attn]
-          C[feed forward]
-          O[output]
-          A --> B
-          B --> C
-          C --> O
+        graph BT
+            A[input]
+            B[multi-head self-attn]
+            C[feed forward]
+            O[output]
+            A --> B
+            B --> C
+            C --> O
 
 
 
     Args:
-       num_layers (int): number of encoder layers
-       hidden_size (int): number of hidden units
-       dropout (float): dropout parameters
-       embeddings (:obj:`onmt.modules.Embeddings`):
-          embeddings to use, should have positional encodings
+        num_layers (int): number of encoder layers
+        hidden_size (int): number of hidden units
+        dropout (float): dropout parameters
+        embeddings (:obj:`onmt.modules.Embeddings`):
+            embeddings to use, should have positional encodings
     """
-    def __init__(self, num_layers, hidden_size,
-                 dropout, embeddings):
+    def __init__(self, num_layers, hidden_size, dropout, embeddings):
         super(TransformerEncoder, self).__init__()
 
         self.num_layers = num_layers
         self.embeddings = embeddings
         self.transformer = nn.ModuleList(
-            [TransformerEncoderLayer(hidden_size, dropout)
-             for i in range(num_layers)])
+            [TransformerEncoderLayer(hidden_size, dropout) for i in range(num_layers)]
+        )
         self.layer_norm = onmt.modules.LayerNorm(hidden_size)
 
     def forward(self, input, lengths=None, hidden=None):
         """ See :obj:`EncoderBase.forward()`"""
-        self._check_args(input, lengths, hidden)
+        self._check_args(input, lengths=lengths)
 
         emb = self.embeddings(input)
         s_len, n_batch, emb_dim = emb.size()
@@ -141,15 +139,14 @@ class TransformerEncoder(EncoderBase):
 class TransformerDecoderLayer(nn.Module):
     """
     Args:
-      size(int): the dimension of keys/values/queries in
-                       MultiHeadedAttention, also the input size of
-                       the first-layer of the PositionwiseFeedForward.
-      droput(float): dropout probability(0-1.0).
-      head_count(int): the number of heads for MultiHeadedAttention.
-      hidden_size(int): the second-layer of the PositionwiseFeedForward.
+        size(int): the dimension of keys/values/queries in
+                        MultiHeadedAttention, also the input size of
+                        the first-layer of the PositionwiseFeedForward.
+        droput(float): dropout probability(0-1.0).
+        head_count(int): the number of heads for MultiHeadedAttention.
+        hidden_size(int): the second-layer of the PositionwiseFeedForward.
     """
-    def __init__(self, size, dropout,
-                 head_count=8, hidden_size=2048):
+    def __init__(self, size, dropout, head_count=8, hidden_size=2048):
         super(TransformerDecoderLayer, self).__init__()
         self.self_attn = onmt.modules.MultiHeadedAttention(
                 head_count, size, dropout=dropout)
@@ -192,12 +189,10 @@ class TransformerDecoderLayer(nn.Module):
         if previous_input is not None:
             all_input = torch.cat((previous_input, input_norm), dim=1)
             dec_mask = None
-        query, attn = self.self_attn(all_input, all_input, input_norm,
-                                     mask=dec_mask)
+        query, attn = self.self_attn(all_input, all_input, input_norm, mask=dec_mask)
         query = self.drop(query) + input
         query_norm = self.layer_norm_2(query)
-        mid, attn = self.context_attn(memory_bank, memory_bank, query_norm,
-                                      mask=src_pad_mask)
+        mid, attn = self.context_attn(memory_bank, memory_bank, query_norm, mask=src_pad_mask)
         output = self.feed_forward(self.drop(mid) + query)
 
         # CHECKS
@@ -228,29 +223,29 @@ class TransformerDecoder(nn.Module):
 
     .. mermaid::
 
-       graph BT
-          A[input]
-          B[multi-head self-attn]
-          BB[multi-head src-attn]
-          C[feed forward]
-          O[output]
-          A --> B
-          B --> BB
-          BB --> C
-          C --> O
+        graph BT
+            A[input]
+            B[multi-head self-attn]
+            BB[multi-head src-attn]
+            C[feed forward]
+            O[output]
+            A --> B
+            B --> BB
+            BB --> C
+            C --> O
 
 
     Args:
-       num_layers (int): number of encoder layers.
-       hidden_size (int): number of hidden units
-       dropout (float): dropout parameters
-       embeddings (:obj:`onmt.modules.Embeddings`):
-          embeddings to use, should have positional encodings
+        num_layers (int): number of encoder layers.
+        hidden_size (int): number of hidden units
+        dropout (float): dropout parameters
+        embeddings (:obj:`onmt.modules.Embeddings`):
+            embeddings to use, should have positional encodings
 
-       attn_type (str): if using a seperate copy attention
+        attn_type (str): if using a seperate copy attention
     """
     def __init__(self, num_layers, hidden_size, attn_type,
-                 copy_attn, dropout, embeddings):
+                    copy_attn, dropout, embeddings):
         super(TransformerDecoder, self).__init__()
 
         # Basic attributes.
@@ -260,8 +255,8 @@ class TransformerDecoder(nn.Module):
 
         # Build TransformerDecoder.
         self.transformer_layers = nn.ModuleList(
-            [TransformerDecoderLayer(hidden_size, dropout)
-             for _ in range(num_layers)])
+            [TransformerDecoderLayer(hidden_size, dropout) for _ in range(num_layers)]
+        )
 
         # TransformerDecoder has its own attention mechanism.
         # Set up a separated copy attention layer, if needed.
@@ -322,8 +317,8 @@ class TransformerDecoder(nn.Module):
                 prev_layer_input = state.previous_layer_inputs[i]
             output, attn, all_input \
                 = self.transformer_layers[i](output, src_memory_bank,
-                                             src_pad_mask, tgt_pad_mask,
-                                             previous_input=prev_layer_input)
+                                                src_pad_mask, tgt_pad_mask,
+                                                previous_input=prev_layer_input)
             saved_inputs.append(all_input)
 
         saved_inputs = torch.stack(saved_inputs)

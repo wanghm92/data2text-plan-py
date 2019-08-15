@@ -118,7 +118,9 @@ class Translator(object):
 
         enc_states, memory_bank = self.model.encoder((src, edges), src_lengths)
         if isinstance(memory_bank, tuple):
-            memory_bank, _ = memory_bank
+            #! stage1: Mean or GraphEncoder
+            memory_bank, _ = memory_bank  # _ is enc_embs for index_selecting tbl embeddings to compute loss in stage2
+
         src_lengths = torch.Tensor(batch_size).type_as(memory_bank.data) \
             .long() \
             .fill_(memory_bank.size(0))
@@ -134,7 +136,7 @@ class Translator(object):
 
             model = self.model2
 
-        dec_states = model.decoder.init_decoder_state(src, memory_bank, enc_states)  # src is useless
+        dec_states = model.decoder.init_decoder_state(src, memory_bank, enc_states)  # src and memory_bank are useless
 
         # (2) Repeat src objects `beam_size` times.
         src_map = rvar(batch.src_map.data) \
@@ -163,7 +165,7 @@ class Translator(object):
             inp = inp.unsqueeze(2)
             # Run one step.
             dec_out, dec_states, attn = model.decoder(
-                inp, memory_bank, dec_states, memory_lengths=memory_lengths)
+                inp, (memory_bank, None), dec_states, memory_lengths=memory_lengths)
 
             if not stage1:
                 dec_out = dec_out.squeeze(0)
@@ -229,6 +231,7 @@ class Translator(object):
         return ret
 
     def _run_target(self, batch, data):
+        #! NOTE: currently not used
         data_type = data.data_type
         if data_type == 'text':
             _, src_lengths = batch.src

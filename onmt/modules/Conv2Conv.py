@@ -26,8 +26,8 @@ class GatedConv(nn.Module):
     def __init__(self, input_size, width=3, dropout=0.2, nopad=False):
         super(GatedConv, self).__init__()
         self.conv = WeightNormConv2d(input_size, 2 * input_size,
-                                     kernel_size=(width, 1), stride=(1, 1),
-                                     padding=(width // 2 * (1 - nopad), 0))
+                                        kernel_size=(width, 1), stride=(1, 1),
+                                        padding=(width // 2 * (1 - nopad), 0))
         init.xavier_uniform(self.conv.weight, gain=(4 * (1 - dropout))**0.5)
         self.dropout = nn.Dropout(dropout)
 
@@ -40,8 +40,7 @@ class GatedConv(nn.Module):
 
 
 class StackedCNN(nn.Module):
-    def __init__(self, num_layers, input_size, cnn_kernel_width=3,
-                 dropout=0.2):
+    def __init__(self, num_layers, input_size, cnn_kernel_width=3, dropout=0.2):
         super(StackedCNN, self).__init__()
         self.dropout = dropout
         self.num_layers = num_layers
@@ -63,18 +62,17 @@ class CNNEncoder(EncoderBase):
     :cite:`DBLP:journals/corr/GehringAGYD17`.
     """
     def __init__(self, num_layers, hidden_size,
-                 cnn_kernel_width, dropout, embeddings):
+                    cnn_kernel_width, dropout, embeddings):
         super(CNNEncoder, self).__init__()
 
         self.embeddings = embeddings
         input_size = embeddings.embedding_size
         self.linear = nn.Linear(input_size, hidden_size)
-        self.cnn = StackedCNN(num_layers, hidden_size,
-                              cnn_kernel_width, dropout)
+        self.cnn = StackedCNN(num_layers, hidden_size, cnn_kernel_width, dropout)
 
     def forward(self, input, lengths=None, hidden=None):
         """ See :obj:`onmt.modules.EncoderBase.forward()`"""
-        self._check_args(input, lengths, hidden)
+        self._check_args(input, lengths=lengths)
 
         emb = self.embeddings(input)
         s_len, batch, emb_dim = emb.size()
@@ -98,7 +96,7 @@ class CNNDecoder(nn.Module):
     Consists of residual convolutional layers, with ConvMultiStepAttention.
     """
     def __init__(self, num_layers, hidden_size, attn_type,
-                 copy_attn, cnn_kernel_width, dropout, embeddings):
+                    copy_attn, cnn_kernel_width, dropout, embeddings):
         super(CNNDecoder, self).__init__()
 
         # Basic attributes.
@@ -116,7 +114,7 @@ class CNNDecoder(nn.Module):
         for i in range(self.num_layers):
             self.conv_layers.append(
                 GatedConv(self.hidden_size, self.cnn_kernel_width,
-                          self.dropout, True))
+                            self.dropout, True))
 
         self.attn_layers = nn.ModuleList()
         for i in range(self.num_layers):
@@ -166,8 +164,7 @@ class CNNDecoder(nn.Module):
         x = linear_out.view(tgt_emb.size(0), tgt_emb.size(1), -1)
         x = shape_transform(x)
 
-        pad = Variable(torch.zeros(x.size(0), x.size(1),
-                                   self.cnn_kernel_width - 1, 1))
+        pad = Variable(torch.zeros(x.size(0), x.size(1), self.cnn_kernel_width - 1, 1))
         pad = pad.type_as(x)
         base_target_emb = x
 

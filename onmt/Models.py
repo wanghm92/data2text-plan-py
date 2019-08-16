@@ -64,8 +64,9 @@ class MeanEncoder(EncoderBase):
     """
     def __init__(
             self, num_layers, src_bundle, emb_size,
-            dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False
-    ):
+            dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False,
+            output_layer='gating'
+        ):
         super(MeanEncoder, self).__init__()
         self.num_layers = num_layers
         self.table_embeddings = None
@@ -75,11 +76,43 @@ class MeanEncoder(EncoderBase):
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
         self.no_self_attn = no_self_attn
+        self.relu = nn.ReLU()
+
+        self.output_layer = output_layer
+        if self.output_layer == 'dense':
+            self.linear_out = nn.Linear(emb_size * 2, emb_size)
+        elif self.output_layer == 'highway':
+            self.highway = onmt.modules.HighwayMLP(emb_size)
+
         if not self.no_self_attn:
-            self.attn = onmt.modules.GlobalSelfAttention(emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
+            gating = self.output_layer=='gating'
+            self.attn = onmt.modules.GlobalSelfAttention(
+                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden,
+                gating=gating)
+        else:
+            # no self-attention layer --> no need to apply any output layer
+            # the name is misleading but it's a workaround
+            assert self.output_layer=='gating'
+
+    def _get_outputs(self, emb, encoder_output):
+        if self.output_layer == 'gating':
+            # gating has been applied in self-attention, same as before
+            out = encoder_output
+        elif self.output_layer == 'highway':
+            out = self.highway(emb, encoder_output)
+        else:
+            if self.output_layer == 'res':
+                out = torch.add(emb, self.relu(encoder_output))
+            elif self.output_layer == 'dense':
+                # TODO: dense does not make sense here
+                concat_c = torch.cat([encoder_output, emb], 2)
+                out = self.linear_out(concat_c)
+                out = self.relu(out)
+            else:
+                raise ValueError('{} is not supported'.format(self.output_layer))
+        return out
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
-        "See :obj:`EncoderBase.forward()`"
         assert isinstance(src, tuple)
         src, _ = src
         self._check_args(src, lengths=lengths)
@@ -87,11 +120,14 @@ class MeanEncoder(EncoderBase):
         emb = self.dropout(self.embeddings(src))  # src: word/feature ids
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch, emb_dim = emb.size()
+
         if self.no_self_attn:
             encoder_output = emb
         else:
-            encoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1),
-                                               memory_lengths=lengths)
+            encoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+
+        encoder_output = self._get_outputs(emb, encoder_output)
+
         mean = encoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
         memory_bank = encoder_output
         encoder_final = (mean, mean)
@@ -99,13 +135,12 @@ class MeanEncoder(EncoderBase):
 
 
 class GraphEncoder(EncoderBase):
-    """
-    Arguments:
-        EncoderBase {[type]} -- [description]
-    Returns:
-        [type] -- [description]
-    """
-    def __init__(self, num_layers, src_bundle, emb_size, dropout=0.0):
+
+    def __init__(
+        self, num_layers, src_bundle, emb_size,
+        dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False,
+        output_layer='dense'
+        ):
         super(GraphEncoder, self).__init__()
         self.num_layers = num_layers
         assert isinstance(src_bundle, tuple)
@@ -114,10 +149,45 @@ class GraphEncoder(EncoderBase):
         self.edge_embeddings = edge_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
+        self.relu = nn.ReLU()
+
+        self.no_self_attn = no_self_attn
+        if not self.no_self_attn:
+            self.attn = onmt.modules.GlobalSelfAttention(
+                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden,
+                gating=True)  #! TODO: give a flag to this
+
         # self.conv = GCNConv(emb_size, emb_size)
         # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
         self.conv = onmt.modules.GATConv(emb_size, emb_size)
         self.linear_out = nn.Linear(emb_size * 2, emb_size, bias=False)
+        self.output_layer = output_layer
+        if self.output_layer == 'highway':
+            self.highway = onmt.modules.HighwayMLP(emb_size)
+
+    def _node_encoding(self, graph_batch, shape, non_linear=False):
+        out = self.conv(graph_batch.x, graph_batch.edge_index)
+        if non_linear:
+            out = F.relu(out)
+            out = self.dropout(out)
+        out = out.reshape(shape)
+        return out
+
+    def _get_outputs(self, emb, neighbour_vectors, gating=False):
+        if self.output_layer == 'highway':
+            out = self.highway(emb, neighbour_vectors)
+        else:
+            concat_c = torch.cat([neighbour_vectors, emb], 2)
+            out = self.linear_out(concat_c)
+            if self.output_layer == 'res':
+                out = torch.add(emb, self.relu(out))
+            elif self.output_layer == 'dense':
+                out = self.relu(out)
+            elif self.output_layer == 'gating':
+                out = torch.sigmoid(out).mul(emb)
+            else:
+                raise ValueError('{} is not supported'.format(self.output_layer))
+        return out
 
     def _construct_data_list(self, edges, emb):
         edge_left, edge_right, edge_label, num_edge = edges
@@ -135,20 +205,6 @@ class GraphEncoder(EncoderBase):
             data_list.append(data)
         return data_list
 
-    def _node_encoding(self, graph_batch, shape, non_linear=False):
-        out = self.conv(graph_batch.x, graph_batch.edge_index)
-        if non_linear:
-            out = F.relu(out)
-            out = self.dropout(out)
-        out = out.reshape(shape)
-        return out
-
-    def _content_gating(self, emb, graph_node_vectors):
-        concat_c = torch.cat([graph_node_vectors, emb], 2)
-        r_att = self.linear_out(concat_c)
-        r_cs = torch.sigmoid(r_att).mul(emb)
-        return r_cs
-
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
         assert isinstance(src, tuple)
         src, edges = src
@@ -157,11 +213,14 @@ class GraphEncoder(EncoderBase):
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch_size, emb_dim = emb.size()
 
+        if not self.no_self_attn:
+            emb, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+
         data_list = self._construct_data_list(edges, emb)
         graph_batch = Batch.from_data_list(data_list)
-        graph_node_vectors = self._node_encoding(graph_batch, emb.size())
+        neighbour_vectors = self._node_encoding(graph_batch, emb.size())
 
-        encoder_output = self._content_gating(emb, graph_node_vectors)
+        encoder_output = self._get_outputs(emb, neighbour_vectors)
 
         mean = encoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
         memory_bank = encoder_output

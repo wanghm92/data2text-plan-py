@@ -57,6 +57,9 @@ def model_opts(parser):
                         help="""Type of encoder layer to use. Non-RNN layers
                         are experimental. Options are
                         [rnn|brnn|mean|transformer|cnn].""")
+    group.add_argument('-encoder_outlayer', type=str, default='gating',
+                        choices=['dense', 'highway', 'res', 'gating'],
+                        help="""Type of encoder output layer to use. Options are [dense|highway|res].""")
     group.add_argument('-decoder_type1', type=str, default='rnn',
                         choices=['rnn', 'transformer', 'cnn', 'pointer'],
                         help="""Type of decoder layer to use. Non-RNN layers
@@ -303,6 +306,9 @@ def train_opts(parser):
     group.add_argument('-stage1_no_self_attn',
                         action='store_true',
                         help="Whether not to use GlobalSelfAttention for table encoder.")
+    # group.add_argument('-stage1_self_attn_gating',
+    #                     action='store_true',
+    #                     help="Whether not to use gating in GlobalSelfAttention for table encoder.")
 
     # Optimization options
     group = parser.add_argument_group('Optimization- Type')

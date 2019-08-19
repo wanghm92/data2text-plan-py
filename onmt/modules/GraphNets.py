@@ -48,8 +48,9 @@ class GATConv(MessagePassing):
             :class:`torch_geometric.nn.conv.MessagePassing`.
     """
 
-    def __init__(self, in_channels, out_channels, heads=1, concat=True,
-                 negative_slope=0.2, dropout=0, bias=True, **kwargs):
+    def __init__(
+        self, in_channels, out_channels, heads=1, concat=True,
+        negative_slope=0.2, dropout=0, bias=True, edge_aware='dense', **kwargs):
         super(GATConv, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
@@ -58,10 +59,14 @@ class GATConv(MessagePassing):
         self.concat = concat
         self.negative_slope = negative_slope
         self.dropout = dropout
-
+        self.edge_aware = edge_aware
         self.weight = Parameter(
             torch.Tensor(in_channels, heads * out_channels))
-        self.att = Parameter(torch.Tensor(1, heads, 2 * out_channels))
+        out_dim = 2 * out_channels
+        print(' ** [GAT] edge_aware = {}'.format(edge_aware))
+        if self.edge_aware == 'dense':
+            out_dim += out_channels
+        self.att = Parameter(torch.Tensor(1, heads, out_dim))
 
         if bias and concat:
             self.bias = Parameter(torch.Tensor(heads * out_channels))
@@ -77,11 +82,11 @@ class GATConv(MessagePassing):
         glorot(self.att)
         zeros(self.bias)
 
-    def forward(self, x, edge_index, size=None):
+    def forward(self, x, edge_index, edge_attr, size=None):
         """"""
-        if size is None and torch.is_tensor(x):
-            edge_index, _ = remove_self_loops(edge_index)
-            edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        # if size is None and torch.is_tensor(x):
+        #     edge_index, _ = remove_self_loops(edge_index)
+        #     edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
 
         if torch.is_tensor(x):
             x = torch.matmul(x, self.weight)
@@ -89,16 +94,25 @@ class GATConv(MessagePassing):
             x = (None if x[0] is None else torch.matmul(x[0], self.weight),
                     None if x[1] is None else torch.matmul(x[1], self.weight))
 
-        return self.propagate(edge_index, size=size, x=x)
+        return self.propagate(edge_index, size=size, x=x, edge_attr=edge_attr)
 
-    def message(self, edge_index_i, x_i, x_j, size_i):
+    def message(self, edge_index_i, x_i, x_j, size_i, edge_attr):
         # Compute attention coefficients.
+        edge_attr = edge_attr.unsqueeze(1)
         x_j = x_j.view(-1, self.heads, self.out_channels)
         if x_i is None:
             alpha = (x_j * self.att[:, :, self.out_channels:]).sum(dim=-1)
         else:
             x_i = x_i.view(-1, self.heads, self.out_channels)
-            alpha = (torch.cat([x_i, x_j], dim=-1) * self.att).sum(dim=-1)
+
+            concat = [x_i, x_j]
+            if self.edge_aware == 'dense' or self.edge_aware == 'both':
+                concat.append(edge_attr)
+
+            # TODO: add option for bias type of edge_aware
+
+            dot_product = torch.cat(concat, dim=-1) * self.att
+            alpha = dot_product.sum(dim=-1)
 
         alpha = F.leaky_relu(alpha, self.negative_slope)
         alpha = softmax(alpha, edge_index_i, size_i)
@@ -106,7 +120,12 @@ class GATConv(MessagePassing):
         # Sample attention coefficients stochastically.
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
-        return x_j * alpha.view(-1, self.heads, 1)
+        if self.edge_aware == 'add' or self.edge_aware == 'both':
+            out = x_j + edge_attr
+        else:
+            out = x_j
+
+        return out * alpha.view(-1, self.heads, 1)
 
     def update(self, aggr_out):
         if self.concat is True:

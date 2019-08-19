@@ -26,6 +26,7 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         for_encoder(bool): make Embeddings for encoder or decoder?
         discard_word: return only aggregated feature embeddings
     """
+    # TODO: change this to make it more flexible
     embedding_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
 
     word_padding_idx = word_dict.stoi[onmt.io.PAD_WORD]
@@ -66,7 +67,7 @@ def make_encoder(opt, src_bundle, stage1=True):
         elif opt.encoder_type1 == 'graph':
             return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size,
                                 dropout=opt.dropout, no_self_attn=opt.stage1_no_self_attn, attn_hidden=opt.attn_hidden,
-                                output_layer=opt.encoder_outlayer)
+                                output_layer=opt.encoder_outlayer, edge_aware=opt.edge_aware)
         else:
             raise NotImplementedError("encoder_type = {} is not implemented".format(opt.encoder_type))
     else:

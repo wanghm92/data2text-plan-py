@@ -57,8 +57,11 @@ def model_opts(parser):
                         help="""Type of encoder layer to use. Non-RNN layers
                         are experimental. Options are
                         [rnn|brnn|mean|transformer|cnn].""")
+    group.add_argument('-edge_aware', type=str, default='dense',
+                        choices=['dense', 'add'],
+                        help="""How graph edge information is integrated""")
     group.add_argument('-encoder_outlayer', type=str, default='gating',
-                        choices=['dense', 'highway', 'res', 'gating'],
+                        choices=['dense', 'highway', 'res', 'add'],
                         help="""Type of encoder output layer to use. Options are [dense|highway|res].""")
     group.add_argument('-decoder_type1', type=str, default='rnn',
                         choices=['rnn', 'transformer', 'cnn', 'pointer'],

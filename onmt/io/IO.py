@@ -277,7 +277,7 @@ def build_vocab(train_dataset_files, fields, data_type, share_vocab,
 
     # TODO: save edge label vocab during graph construction, and include here
     for _ in range(10):
-        counter['edge_labels'].update(['>', '<', '=', 'has'])
+        counter['edge_labels'].update(['>', '<', '=', 'has', 'led_by'])
 
     for tgt in ("tgt1", "tgt2"):
         _build_field_vocab(fields[tgt], counter[tgt],

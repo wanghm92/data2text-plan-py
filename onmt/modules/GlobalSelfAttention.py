@@ -58,7 +58,7 @@ class GlobalSelfAttention(nn.Module):
         attn_type (str): type of attention to use, options [dot,general,mlp]
 
     """
-    def __init__(self, dim, coverage=False, attn_type="dot", attn_hidden=0, gating=True):
+    def __init__(self, dim, coverage=False, attn_type="dot", attn_hidden=0):
         super(GlobalSelfAttention, self).__init__()
 
         self.dim = dim
@@ -94,8 +94,6 @@ class GlobalSelfAttention(nn.Module):
 
         if coverage:
             self.linear_cover = nn.Linear(1, dim, bias=False)
-
-        self.gating = gating
 
     def score(self, h_t, h_s):
         """
@@ -219,8 +217,7 @@ class GlobalSelfAttention(nn.Module):
             # attn_h = F.elu(self.dropout(attn_h) + input, 0.1)
 
             # content selection gate
-            if self.gating:
-                attn_h = torch.sigmoid(attn_h).mul(input)
+            attn_h = torch.sigmoid(attn_h).mul(input)
 
         if one_step:
             attn_h = attn_h.squeeze(1)

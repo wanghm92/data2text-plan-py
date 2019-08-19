@@ -93,8 +93,6 @@ class Beam(object):
             for i in range(self.next_ys[-1].size(0)):
                 if self.next_ys[-1][i] == self._eos:
                     beam_scores[i] = -1e20
-            # import pdb
-            # pdb.set_trace()
         else:
             beam_scores = word_probs[0]
         flat_beam_scores = beam_scores.view(-1)

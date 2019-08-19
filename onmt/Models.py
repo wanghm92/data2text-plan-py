@@ -85,10 +85,8 @@ class MeanEncoder(EncoderBase):
             self.highway = onmt.modules.HighwayMLP(emb_size)
 
         if not self.no_self_attn:
-            gating = self.output_layer=='gating'
             self.attn = onmt.modules.GlobalSelfAttention(
-                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden,
-                gating=gating)
+                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
         else:
             # no self-attention layer --> no need to apply any output layer
             # the name is misleading but it's a workaround
@@ -139,7 +137,7 @@ class GraphEncoder(EncoderBase):
     def __init__(
         self, num_layers, src_bundle, emb_size,
         dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False,
-        output_layer='dense'
+        output_layer='dense', edge_aware='dense'
         ):
         super(GraphEncoder, self).__init__()
         self.num_layers = num_layers
@@ -154,54 +152,56 @@ class GraphEncoder(EncoderBase):
         self.no_self_attn = no_self_attn
         if not self.no_self_attn:
             self.attn = onmt.modules.GlobalSelfAttention(
-                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden,
-                gating=True)  #! TODO: give a flag to this
+                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
 
         # self.conv = GCNConv(emb_size, emb_size)
         # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
-        self.conv = onmt.modules.GATConv(emb_size, emb_size)
+        self.conv = onmt.modules.GATConv(emb_size, emb_size, edge_aware=edge_aware)
         self.linear_out = nn.Linear(emb_size * 2, emb_size, bias=False)
         self.output_layer = output_layer
         if self.output_layer == 'highway':
             self.highway = onmt.modules.HighwayMLP(emb_size)
 
     def _node_encoding(self, graph_batch, shape, non_linear=False):
-        out = self.conv(graph_batch.x, graph_batch.edge_index)
+        out = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_attr)
         if non_linear:
             out = F.relu(out)
             out = self.dropout(out)
         out = out.reshape(shape)
         return out
 
-    def _get_outputs(self, emb, neighbour_vectors, gating=False):
+    def _get_outputs(self, emb, attn_vectors, graph_vectors):
+        # TODO: add emb into skip connection
         if self.output_layer == 'highway':
-            out = self.highway(emb, neighbour_vectors)
+            out = self.highway(attn_vectors, graph_vectors)
+        elif self.output_layer == 'add':
+            out = torch.add(attn_vectors, graph_vectors)
         else:
-            concat_c = torch.cat([neighbour_vectors, emb], 2)
+            concat_c = torch.cat([attn_vectors, graph_vectors], 2)
             out = self.linear_out(concat_c)
             if self.output_layer == 'res':
-                out = torch.add(emb, self.relu(out))
+                out = torch.add(attn_vectors, self.relu(out))
             elif self.output_layer == 'dense':
                 out = self.relu(out)
-            elif self.output_layer == 'gating':
-                out = torch.sigmoid(out).mul(emb)
             else:
                 raise ValueError('{} is not supported'.format(self.output_layer))
         return out
 
     def _construct_data_list(self, edges, emb):
         edge_left, edge_right, edge_label, num_edge = edges
+        edge_embed = self.dropout(self.edge_embeddings(edge_label.unsqueeze(-1)))
         data_list = []
-        for left, right, label, length, x in \
+        for left, right, edge_attr, length, x in \
                 zip(torch.split(edge_left, 1, dim=1),
                     torch.split(edge_right, 1, dim=1),
-                    torch.split(edge_label, 1, dim=1),
+                    torch.split(edge_embed, 1, dim=1),
                     torch.split(num_edge, 1),
                     torch.split(emb, 1, dim=1)):
             edge_index = torch.cat([left, right], dim=1).t().contiguous()[:, :length.item()]
+            edge_attr = edge_attr.squeeze(1)[:length.item(), :]  # cut off by actual number of edges
             x = x.squeeze(1)
-            label = label.squeeze(1)[:length.item()]-2  #! NOTE: here -2 (for <unk> and <blank>) is for index_select in RGCN
-            data = Data(x=x, edge_index=edge_index, edge_label=label)
+            # label = label.squeeze(1)[:length.item()]  #! NOTE: here -2 (for <unk> and <blank>) is for index_select in RGCN
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
             data_list.append(data)
         return data_list
 
@@ -209,18 +209,22 @@ class GraphEncoder(EncoderBase):
         assert isinstance(src, tuple)
         src, edges = src
         self._check_args(src, edges=edges, lengths=lengths)
+
+        # (1) original node embeddings
         emb = self.dropout(self.embeddings(src))
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch_size, emb_dim = emb.size()
 
+        # (2) gloabl self-attention node encodings
         if not self.no_self_attn:
-            emb, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+            attn_vectors, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 
+        # (3) local graph constrained node encodings
         data_list = self._construct_data_list(edges, emb)
         graph_batch = Batch.from_data_list(data_list)
-        neighbour_vectors = self._node_encoding(graph_batch, emb.size())
+        graph_vectors = self._node_encoding(graph_batch, emb.size())
 
-        encoder_output = self._get_outputs(emb, neighbour_vectors)
+        encoder_output = self._get_outputs(emb, attn_vectors, graph_vectors)
 
         mean = encoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
         memory_bank = encoder_output

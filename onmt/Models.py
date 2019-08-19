@@ -79,8 +79,8 @@ class MeanEncoder(EncoderBase):
         self.relu = nn.ReLU()
 
         self.output_layer = output_layer
-        if self.output_layer == 'dense':
-            self.linear_out = nn.Linear(emb_size * 2, emb_size)
+        if self.output_layer in ['dense', 'res']:
+            self.linear_out = nn.Linear(emb_size * 2, emb_size)  #, bias=False)
         elif self.output_layer == 'highway':
             self.highway = onmt.modules.HighwayMLP(emb_size)
 
@@ -92,23 +92,25 @@ class MeanEncoder(EncoderBase):
             # the name is misleading but it's a workaround
             assert self.output_layer=='gating'
 
-    def _get_outputs(self, emb, encoder_output):
-        if self.output_layer == 'gating':
-            # gating has been applied in self-attention, same as before
-            out = encoder_output
-        elif self.output_layer == 'highway':
-            out = self.highway(emb, encoder_output)
+    def _get_outputs(self, emb, attn_vectors):
+        if self.output_layer == 'highway':
+            out = self.highway(attn_vectors, emb)
+        elif self.output_layer == 'add':
+            out = torch.add(attn_vectors, emb)
         else:
+            concat_c = torch.cat([attn_vectors, emb], 2)
+            out = self.linear_out(concat_c)
             if self.output_layer == 'res':
-                out = torch.add(emb, self.relu(encoder_output))
+                out = torch.add(attn_vectors, self.relu(out))
             elif self.output_layer == 'dense':
-                # TODO: dense does not make sense here
-                concat_c = torch.cat([encoder_output, emb], 2)
-                out = self.linear_out(concat_c)
                 out = self.relu(out)
+            # original context gating
+            elif self.output_layer == 'gating':
+                out = torch.sigmoid(out).mul(emb)
             else:
                 raise ValueError('{} is not supported'.format(self.output_layer))
         return out
+
 
     def forward(self, src, lengths=None, encoder_state=None, memory_lengths=None):
         assert isinstance(src, tuple)
@@ -122,9 +124,8 @@ class MeanEncoder(EncoderBase):
         if self.no_self_attn:
             encoder_output = emb
         else:
-            encoder_output, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
-
-        encoder_output = self._get_outputs(emb, encoder_output)
+            attn_vectors, p_attn = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+            encoder_output = self._get_outputs(emb, attn_vectors)
 
         mean = encoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
         memory_bank = encoder_output
@@ -218,6 +219,10 @@ class GraphEncoder(EncoderBase):
         # (2) gloabl self-attention node encodings
         if not self.no_self_attn:
             attn_vectors, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+            # moving context gate out of GlobalSelfAttention
+            concat_c = torch.cat([attn_vectors, input], 2)
+            attn_vectors = self.linear_out(concat_c)
+            attn_vectors = torch.sigmoid(attn_vectors).mul(input)
 
         # (3) local graph constrained node encodings
         data_list = self._construct_data_list(edges, emb)

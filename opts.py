@@ -61,7 +61,7 @@ def model_opts(parser):
                         choices=['dense', 'add'],
                         help="""How graph edge information is integrated""")
     group.add_argument('-encoder_outlayer', type=str, default='gating',
-                        choices=['dense', 'highway', 'res', 'add'],
+                        choices=['gating', 'dense', 'highway', 'res', 'add'],
                         help="""Type of encoder output layer to use. Options are [dense|highway|res].""")
     group.add_argument('-decoder_type1', type=str, default='rnn',
                         choices=['rnn', 'transformer', 'cnn', 'pointer'],

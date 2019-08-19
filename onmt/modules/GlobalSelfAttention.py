@@ -86,7 +86,7 @@ class GlobalSelfAttention(nn.Module):
             self.v = nn.Linear(d, dim, bias=False)
         # mlp wants it with bias
         out_bias = self.attn_type in ("mlp", "fine")
-        self.linear_out = nn.Linear(dim*2, dim, bias=out_bias)
+        # self.linear_out = nn.Linear(dim*2, dim, bias=out_bias)
 
         self.sm = nn.Softmax(dim=2)
         self.tanh = nn.Tanh()
@@ -209,15 +209,16 @@ class GlobalSelfAttention(nn.Module):
         else:
             c = torch.bmm(align_vectors, memory_bank)
 
-        # concatenate
-        concat_c = torch.cat([c, input], 2)
-        attn_h = self.linear_out(concat_c)
-        if self.attn_type in ["general", "dot"]:
-            # attn_h = F.elu(attn_h, 0.1)
-            # attn_h = F.elu(self.dropout(attn_h) + input, 0.1)
-
-            # content selection gate
-            attn_h = torch.sigmoid(attn_h).mul(input)
+        attn_h = c
+        # # concatenate
+        # concat_c = torch.cat([c, input], 2)
+        # attn_h = self.linear_out(concat_c)
+        # if self.attn_type in ["general", "dot"]:
+        #     # attn_h = F.elu(attn_h, 0.1)
+        #     # attn_h = F.elu(self.dropout(attn_h) + input, 0.1)
+        #
+        #     # content selection gate
+        #     attn_h = torch.sigmoid(attn_h).mul(input)
 
         if one_step:
             attn_h = attn_h.squeeze(1)

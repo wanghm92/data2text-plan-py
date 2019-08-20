@@ -93,6 +93,7 @@ class MeanEncoder(EncoderBase):
             assert self.output_layer=='gating'
 
     def _get_outputs(self, emb, attn_vectors):
+        assert self.output_layer == 'gating'
         if self.output_layer == 'highway':
             out = self.highway(emb, attn_vectors)
         elif self.output_layer == 'add':
@@ -161,9 +162,9 @@ class GraphEncoder(EncoderBase):
         # self.conv = GCNConv(emb_size, emb_size)
         # self.conv = RGCNConv(emb_size, emb_size, 4, num_bases=4)
         self.conv = onmt.modules.GATConv(emb_size, emb_size,
-                                         edge_aware=edge_aware,
-                                         attn_hidden=attn_hidden,
-                                         edge_attn_bias=edge_attn_bias)
+                                            edge_aware=edge_aware,
+                                            attn_hidden=attn_hidden,
+                                            edge_attn_bias=edge_attn_bias)
 
         print(' ** [GraphEncoder] output_layer = {}'.format(output_layer))
         self.output_layer = output_layer

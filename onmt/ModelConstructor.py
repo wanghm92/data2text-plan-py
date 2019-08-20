@@ -16,7 +16,7 @@ from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, TransformerEnc
 from onmt.Utils import use_gpu
 from pprint import pprint
 
-def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_word=False):
+def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_word=False, dim=-1):
     """
     Make an Embeddings instance.
     Args:
@@ -26,9 +26,10 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         for_encoder(bool): make Embeddings for encoder or decoder?
         discard_word: return only aggregated feature embeddings
     """
-    # TODO: change this to make it more flexible
-    embedding_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
-
+    if dim == -1:
+        embedding_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
+    else:
+        embedding_dim = dim
     word_padding_idx = word_dict.stoi[onmt.io.PAD_WORD]
     num_word_embeddings = len(word_dict)
 
@@ -61,18 +62,22 @@ def make_encoder(opt, src_bundle, stage1=True):
     if stage1:
         print("Using ** {} ** encoder, stage1_no_self_attn: {}".format(opt.encoder_type1, opt.stage1_no_self_attn))
         if opt.encoder_type1 == 'mean':
-            return MeanEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size,
-                                dropout=opt.dropout, no_self_attn=opt.stage1_no_self_attn, attn_hidden=opt.attn_hidden,
+            return MeanEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, dropout=opt.dropout,
+                                no_self_attn=opt.stage1_no_self_attn,
+                                attn_hidden=opt.attn_hidden,
                                 output_layer=opt.encoder_outlayer)
         elif opt.encoder_type1 == 'graph':
-            return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size,
-                                dropout=opt.dropout, no_self_attn=opt.stage1_no_self_attn, attn_hidden=opt.attn_hidden,
-                                output_layer=opt.encoder_outlayer, edge_aware=opt.edge_aware)
+            return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, dropout=opt.dropout,
+                                no_self_attn=opt.stage1_no_self_attn,
+                                attn_hidden=opt.attn_hidden,
+                                output_layer=opt.encoder_outlayer,
+                                edge_aware=opt.edge_aware,
+                                edge_attn_bias=opt.edge_attn_bias)
         else:
             raise NotImplementedError("encoder_type = {} is not implemented".format(opt.encoder_type))
     else:
         # "rnn" or "brnn"
-        embeddings, _, _ = src_bundle
+        embeddings, _, _, _ = src_bundle
         return RNNEncoder(
             opt.rnn_type, opt.brnn2, opt.enc_layers2,
             opt.rnn_size, opt.dropout, embeddings,
@@ -164,7 +169,9 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
 
     #! edge_embeddings
     edge_dict = fields['edge_labels'].vocab if model_opt.encoder_type1 == 'graph' else None
+    # TODO: init with 0s?
     edge_embeddings = None if edge_dict is None else make_embeddings(model_opt, edge_dict, [])
+    edge_scalar_embedding = None if edge_dict is None else make_embeddings(model_opt, edge_dict, [], dim=1)
 
     # --- table-reconstruction ---
     table_embeddings = None
@@ -179,7 +186,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
 
     #! make_encoder
     print("edge_embeddings = {}, table_embeddings = {}".format(edge_embeddings, table_embeddings))
-    src_bundle = (src_embeddings, table_embeddings, edge_embeddings)
+    src_bundle = (src_embeddings, table_embeddings, edge_embeddings, edge_scalar_embedding)
     encoder = make_encoder(model_opt, src_bundle, stage1)
 
     '''

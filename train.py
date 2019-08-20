@@ -22,6 +22,9 @@ import opts
 
 from pprint import pprint
 import logging
+
+# TODO: check/use xavier initialization
+
 program = os.path.basename(sys.argv[0])
 L = logging.getLogger(program)
 logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s')

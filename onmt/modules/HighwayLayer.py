@@ -7,26 +7,20 @@ class HighwayMLP(nn.Module):
         self,
         input_size,
         gate_bias=-2,
-        input_activation=nn.ReLU(),
         gate_activation=nn.Sigmoid()
         ):
-
         super(HighwayMLP, self).__init__()
-
-        self.input_activation = input_activation
         self.gate_activation = gate_activation
-
-        self.input_layer = nn.Linear(input_size, input_size)
-
-        self.gate_layer = nn.Linear(input_size, input_size)
+        self.gate_layer = nn.Linear(input_size*2, input_size)
         self.gate_layer.bias.data.fill_(gate_bias)
 
-    def forward(self, x, y):
+    def forward(self, original, additional):
 
-        input_proj = self.input_activation(self.input_layer(x))
-        gate = self.gate_activation(self.gate_layer(y))
+        concat = torch.cat([original, additional], 2)
+        gate = self.gate_activation(self.gate_layer(concat))
 
-        input_proj_gated = torch.mul(input_proj, gate)
-        input_gated = torch.mul((1 - gate), x)
+        # original-aware gating on additinal information
+        additional = torch.mul(gate, additional)
+        original = torch.mul((1 - gate), original)
 
-        return torch.add(input_gated, input_proj_gated)
+        return torch.add(original, additional)

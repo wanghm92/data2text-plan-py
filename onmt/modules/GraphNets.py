@@ -1,6 +1,7 @@
 import torch
 from torch.nn import Parameter
 import torch.nn.functional as F
+import torch.nn as nn
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 
@@ -49,81 +50,99 @@ class GATConv(MessagePassing):
     """
 
     def __init__(
-        self, in_channels, out_channels, heads=1, concat=True,
-        negative_slope=0.2, dropout=0, bias=True, edge_aware='dense', **kwargs):
+        self, in_channels, out_channels, heads=1, concat=True, dropout=0,
+        edge_aware='linear', attn_hidden=0, edge_attn_bias='scalar', **kwargs):
         super(GATConv, self).__init__(aggr='add', **kwargs)
 
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.heads = heads
         self.concat = concat
-        self.negative_slope = negative_slope
         self.dropout = dropout
-        self.edge_aware = edge_aware
-        self.weight = Parameter(
-            torch.Tensor(in_channels, heads * out_channels))
-        out_dim = 2 * out_channels
+
         print(' ** [GAT] edge_aware = {}'.format(edge_aware))
-        if self.edge_aware == 'dense':
-            out_dim += out_channels
-        self.att = Parameter(torch.Tensor(1, heads, out_dim))
+        print(' ** [GAT] edge_attn_bias = {}'.format(edge_attn_bias))
 
-        if bias and concat:
-            self.bias = Parameter(torch.Tensor(heads * out_channels))
-        elif bias and not concat:
-            self.bias = Parameter(torch.Tensor(out_channels))
-        else:
-            self.register_parameter('bias', None)
+        self.edge_aware = edge_aware
+        if self.edge_aware == 'linear':
+            self.edge_node_fuse = nn.Linear(2 * out_channels, out_channels)
 
-        self.reset_parameters()
+        self.edge_attn_bias = edge_attn_bias
+        if self.edge_attn_bias == 'weighted':
+            self.reduce_edge = nn.Linear(out_channels, 1, bias=False)
 
-    def reset_parameters(self):
-        glorot(self.weight)
-        glorot(self.att)
-        zeros(self.bias)
+        self.attn_hidden = attn_hidden
+        #! Default: bias=True
+        self.transform_in = nn.Sequential(nn.Linear(in_channels, attn_hidden), nn.ELU(0.1))
+        self.linear_in = nn.Linear(attn_hidden, attn_hidden, bias=False)
 
-    def forward(self, x, edge_index, edge_attr, size=None):
-        """"""
+    def forward(self, x, edge_index, edge_attr, edge_scalar, size=None):
         # if size is None and torch.is_tensor(x):
         #     edge_index, _ = remove_self_loops(edge_index)
         #     edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
 
-        if torch.is_tensor(x):
-            x = torch.matmul(x, self.weight)
+        # if torch.is_tensor(x):
+        #     x = torch.matmul(x, self.weight)
+        # else:
+        #     x = (None if x[0] is None else torch.matmul(x[0], self.weight),
+        #             None if x[1] is None else torch.matmul(x[1], self.weight))
+
+        return self.propagate(edge_index, size=size, x=x, edge_attr=edge_attr, edge_scalar=edge_scalar)
+
+
+    def score(self, h_t, h_s, edge_attr, edge_scalar=None):
+        """
+        Args:
+            h_t (`FloatTensor`): query tensor `[#edges x #heads x dim]`
+            h_s (`FloatTensor`): source tensor (memory bank) `[#edges x #heads x dim]`
+        Returns:
+            raw attention scores (unnormalized) for each src index (memory bank)
+            `[#edges x #heads x dim]
+
+        """
+        h_t = self.transform_in(h_t)
+        h_s = self.transform_in(h_s)
+
+        # attn_type == "general"
+        h_t = self.linear_in(h_t)
+
+        scores = torch.mul(h_t, h_s).sum(dim=-1)
+
+        if self.edge_attn_bias == 'weighted':
+            assert edge_scalar is None
+            edge_bias = self.reduce_edge(edge_attr)
         else:
-            x = (None if x[0] is None else torch.matmul(x[0], self.weight),
-                    None if x[1] is None else torch.matmul(x[1], self.weight))
+            edge_bias = edge_scalar
 
-        return self.propagate(edge_index, size=size, x=x, edge_attr=edge_attr)
+        scores = torch.add(scores, edge_bias.squeeze(-1))
 
-    def message(self, edge_index_i, x_i, x_j, size_i, edge_attr):
+        return scores
+
+
+    def message(self, edge_index_i, x_i, x_j, size_i, edge_attr, edge_scalar):
         # Compute attention coefficients.
         edge_attr = edge_attr.unsqueeze(1)
+        if edge_scalar is not None:
+            edge_scalar = edge_scalar.unsqueeze(1)
+
+        # reshape the multi-headed Q and K (torch.matmul(x, self.weight) into #heads*dim
+        # TODO: change here if multi-headed attn is needed
         x_j = x_j.view(-1, self.heads, self.out_channels)
-        if x_i is None:
-            alpha = (x_j * self.att[:, :, self.out_channels:]).sum(dim=-1)
-        else:
-            x_i = x_i.view(-1, self.heads, self.out_channels)
+        x_i = x_i.view(-1, self.heads, self.out_channels)
 
-            concat = [x_i, x_j]
-            if self.edge_aware == 'dense' or self.edge_aware == 'both':
-                concat.append(edge_attr)
-
-            # TODO: add option for bias type of edge_aware
-
-            dot_product = torch.cat(concat, dim=-1) * self.att
-            alpha = dot_product.sum(dim=-1)
-
-        alpha = F.leaky_relu(alpha, self.negative_slope)
+        #! x_j is index selected from the source nodes
+        #! correspond to the memorybank in score(input, memorybabnk)
+        alpha = self.score(x_i, x_j, edge_attr, edge_scalar=edge_scalar)
         alpha = softmax(alpha, edge_index_i, size_i)
-
         # Sample attention coefficients stochastically.
         alpha = F.dropout(alpha, p=self.dropout, training=self.training)
 
-        if self.edge_aware == 'add' or self.edge_aware == 'both':
+        # TODO: here could be multiple options for merging two sources of information
+        if self.edge_aware == 'add':
             out = x_j + edge_attr
-        else:
-            out = x_j
+        elif self.edge_aware == 'linear':
+            concat_c = torch.cat([x_j, edge_attr], 2)
+            out = self.edge_node_fuse(concat_c)
 
         return out * alpha.view(-1, self.heads, 1)
 
@@ -133,8 +152,6 @@ class GATConv(MessagePassing):
         else:
             aggr_out = aggr_out.mean(dim=1)
 
-        if self.bias is not None:
-            aggr_out = aggr_out + self.bias
         return aggr_out
 
     def __repr__(self):

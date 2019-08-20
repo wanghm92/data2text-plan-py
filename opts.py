@@ -57,12 +57,17 @@ def model_opts(parser):
                         help="""Type of encoder layer to use. Non-RNN layers
                         are experimental. Options are
                         [rnn|brnn|mean|transformer|cnn].""")
-    group.add_argument('-edge_aware', type=str, default='dense',
-                        choices=['dense', 'add'],
-                        help="""How graph edge information is integrated""")
+    group.add_argument('-edge_aware', type=str, default='linear',
+                        choices=['linear', 'add'],
+                        help="""How graph edge embeddings are integrated with the node attributes before aggregation""")
+    group.add_argument('-edge_attn_bias', type=str, default='scalar',
+                        choices=['scalar', 'weighted'],
+                        help="""Whether to use a seperately defined 1-D (scalar) edge bias
+                        or weighted sum on the edge embeddings when integrating into the attention score calculation""")
+    #! NOTE: the meaning of different encoder_outlayer types are different for Mean/Graph encoders
     group.add_argument('-encoder_outlayer', type=str, default='gating',
-                        choices=['gating', 'dense', 'highway', 'res', 'add'],
-                        help="""Type of encoder output layer to use. Options are [dense|highway|res].""")
+                        choices=['gating', 'add', 'dense', 'highway', 'res', 'sigmoid-on-add', 'add-on-sigmoid', 'highway-add'],
+                        help="""Type of encoder output layer to use. (gating and add not available for graph model)""")
     group.add_argument('-decoder_type1', type=str, default='rnn',
                         choices=['rnn', 'transformer', 'cnn', 'pointer'],
                         help="""Type of decoder layer to use. Non-RNN layers

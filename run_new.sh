@@ -23,7 +23,6 @@ fi
 echo use gpu card $use_gpu
 
 export CUDA_VISIBLE_DEVICES=$use_gpu
-# export CUDA_VISIBLE_DEVICES=1
 
 ##################################################################################################
 
@@ -35,8 +34,8 @@ DATA=inlg
 SUFFIX=ncpcc
 BASE=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_$DATA/new_dataset/new_$SUFFIX
 ENCODER=graph
-# EDGE_DIR=$1
-EDGE_DIR=big2small #small2big
+EDGE_DIR=$1
+# EDGE_DIR=big2small #small2big
 
 PREPATH=$ENCODER\_$DATA\_new_edgedir-$EDGE_DIR
 echo $DATA
@@ -76,14 +75,14 @@ mkdir -p $PREPRO
 DIM=256
 BAT=16
 DEC=2
-EDGE_AWARE=add  # add/linear
-EDGE_AGGR=max   # mean/max
-NODE_FUSE=dense  # dense highway
-OUT_LAYER=add # highway-graph highway-fuse
-# EDGE_AWARE=$2
-# EDGE_AGGR=$3  # mean/max
-# NODE_FUSE=$4  # dense highway
-# OUT_LAYER=$5  # add highway-graph highway-fuse
+# EDGE_AWARE=add  # add/linear
+# EDGE_AGGR=max   # mean/max
+# NODE_FUSE=dense  # dense highway
+# OUT_LAYER=add # highway-graph highway-fuse
+EDGE_AWARE=$2
+EDGE_AGGR=$3  # mean/max
+NODE_FUSE=$4  # dense highway
+OUT_LAYER=$5  # add highway-graph highway-fuse
 IDENTIFIER=$PREPATH\_edgeaware-$EDGE_AWARE\_edgeaggr-$EDGE_AGGR\_graphfuse-$NODE_FUSE\_outlayer-$OUT_LAYER
 printf "IDENTIFIER = $IDENTIFIER \n"
 OUTPUT=$MYHOME/$DATA\_models/$IDENTIFIER
@@ -106,7 +105,7 @@ VALID_DIR=/mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts/new_dat
 
 ##################################################################################################
 echo " ****** Evaluation ****** "
-for EPOCH in $(seq 19 50)
+for EPOCH in $(seq 15 50)
 do
     for MODEL1 in $(ls $OUTPUT/roto_stage1*_e$EPOCH.pt)
     do
@@ -135,10 +134,10 @@ do
         perl ~/table2text/multi-bleu.perl $VALID_TGT2 < $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt
 #
 #        ###################################################################################################
-#        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_aaai/evaluate
-#        echo " ****** RG CS CO ****** "
-#        $PY3 evaluate.py --path $BASE --dataset valid --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
-#        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
+        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/boxscore-data/scripts_aaai/evaluate
+        echo " ****** RG CS CO ****** "
+        $PY3 evaluate.py --path $BASE --dataset valid --hypo $SUM_OUT/roto_stage2_$IDENTIFIER.e$EPOCH.valid.txt --plan $SUM_OUT/roto_stage1_inter_$IDENTIFIER.e$EPOCH.valid.txt
+        cd /mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py
 
 #         $PY3 make_human_eval.py \
 #         --dataset valid \

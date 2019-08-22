@@ -33,20 +33,31 @@ class Statistics(object):
     * perplexity
     * elapsed time
     """
-    def __init__(self, loss=0, n_words=0, n_correct=0):
+    def __init__(self, loss=0, n_words=0, n_correct=0, n_tp=0, n_fn=0):
         self.loss = loss*1.0
         self.n_words = n_words*1.0
         self.n_correct = n_correct*1.0
         self.n_src_words = 0
         self.start_time = time.time()
+        self.n_tp = n_tp
+        self.n_fn = n_fn
 
     def update(self, stat):
         self.loss += stat.loss*1.0
         self.n_words += stat.n_words*1.0
         self.n_correct += stat.n_correct*1.0
+        self.n_tp += stat.n_tp*1.0
+        self.n_fn += stat.n_fn*1.0
 
     def accuracy(self):
         return 100.0 * (self.n_correct / self.n_words)
+
+    def f1(self):
+        total = self.n_tp + self.n_fn
+        precision = self.n_tp*100.0/total
+        recall = self.n_fn*100.0/total
+        f1 = 2*precision*recall/(precision+recall)
+        return "P = {}, R = {}, F1 = {}".format(precision, recall, f1)
 
     def ppl(self):
         return math.exp(min(self.loss / self.n_words, 100))
@@ -54,7 +65,7 @@ class Statistics(object):
     def elapsed_time(self):
         return time.time() - self.start_time
 
-    def output(self, epoch, batch, n_batches, start):
+    def output(self, epoch, batch, n_batches, start, prefix=''):
         """Write out statistics to stdout.
 
         Args:
@@ -65,9 +76,9 @@ class Statistics(object):
         """
         t = self.elapsed_time()
         L.info(
-            ("Epoch %2d, %4d/%4d; loss: %4.2f; acc: %4.2f (%4.2f/%4.2f); ppl: %4.2f; " +
+            ("%s\n Epoch %2d, %4d/%4d; loss: %4.2f; acc: %4.2f (%4.0f/%4.0f); ppl: %4.2f; " +
             "%3.0f src tok/s; %3.0f tgt tok/s; %3.0f s elapsed") %
-            (epoch, batch,  n_batches,
+            (prefix, epoch, batch,  n_batches,
             self.loss / self.n_words,
             self.accuracy(),
             self.n_correct, self.n_words,
@@ -142,7 +153,7 @@ class Trainer(object):
         self.model.train()
         self.model2.train()
 
-    def train(self, train_iter, epoch, report_func=None):
+    def train(self, train_iter, epoch, report_func=None, cs_loss=False):
         """ Train next epoch.
         Args:
             train_iter: training data iterator
@@ -152,8 +163,13 @@ class Trainer(object):
         Returns:
             stats (:obj:`onmt.Statistics`): epoch loss statistics
         """
-        total_stats = Statistics()
-        report_stats = Statistics()
+        print("cs_loss = {}".format(cs_loss))
+        if cs_loss:
+            total_stats = (Statistics(), Statistics())
+            report_stats = (Statistics(), Statistics())
+        else:
+            total_stats = Statistics()
+            report_stats = Statistics()
         total_stats2 = Statistics()
         report_stats2 = Statistics()
         idx = 0
@@ -185,21 +201,33 @@ class Trainer(object):
                 normalization += batch.batch_size
 
             if accum == self.grad_accum_count:
-                #! The actual training part
+                #! NOTE: The actual training part
                 self._gradient_accumulation(
                         true_batchs, total_stats,
                         report_stats, total_stats2, report_stats2, normalization)
 
                 # write to tensorboard every batch
                 if report_func is not None:
+                    if cs_loss:
+                        assert isinstance(report_stats, tuple)
+                        assert isinstance(total_stats, tuple)
+                        report_stats, report_stats_bce = report_stats
+                        total_stats, total_stats_bce = total_stats
+                        report_stats_bce = report_func(
+                                epoch, idx, num_batches,
+                                total_stats_bce.start_time, self.optim.lr,
+                                report_stats_bce, suffix='-encoder_bce')
                     report_stats = report_func(
                             epoch, idx, num_batches,
                             total_stats.start_time, self.optim.lr,
-                            report_stats)
+                            report_stats, suffix='-planner_ce')
                     report_stats2 = report_func(
                             epoch, idx, num_batches,
                             total_stats2.start_time, self.optim2.lr,
-                            report_stats2, suffix='2')
+                            report_stats2, suffix='-generator_ce')
+                    if cs_loss:
+                        total_stats = (total_stats, total_stats_bce)
+                        report_stats = (report_stats, report_stats_bce)
 
                 true_batchs = []
                 accum = 0
@@ -217,7 +245,7 @@ class Trainer(object):
 
         return total_stats, total_stats2
 
-    def validate(self, valid_iter):
+    def validate(self, valid_iter, cs_loss=False):
         """ Validate model.
             valid_iter: validate data iterator
         Returns:
@@ -227,7 +255,10 @@ class Trainer(object):
         self.model.eval()
         self.model2.eval()
 
-        stats = Statistics()
+        if cs_loss:
+            stats = (Statistics(), Statistics())
+        else:
+            stats = Statistics()
         stats2 = Statistics()
 
         for batch in valid_iter:
@@ -249,12 +280,16 @@ class Trainer(object):
             #! here _ is dec_state from stage1, not used
             outputs, attns, _, memory_bundle = self.model((src, None, edges), tgt, src_lengths)
             assert isinstance(memory_bundle, tuple)
-            memory_bank, enc_embs = memory_bundle
+            memory_bank, enc_embs, node_logits = memory_bundle
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
-                    batch, outputs, attns, stage1=True)
+                    batch, outputs, attns, stage1=True, node_logits=node_logits)
             # Update statistics.
-            stats.update(batch_stats)
+            if isinstance(batch_stats, tuple):
+                stats[0].update(batch_stats[0])
+                stats[1].update(batch_stats[1])
+            else:
+                stats.update(batch_stats)
 
             inp_stage2 = tgt[1:-1]
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
@@ -366,6 +401,8 @@ class Trainer(object):
 
             for j in range(0, target_size-1, trunc_size):
                 #setting to value of tgt_planning
+                # print("chunk = {}".format(j))
+                # print(total_stats)
                 tgt = batch.tgt1_planning[j: j + trunc_size].unsqueeze(2)
 
                 # 2. F-prop all but generator.
@@ -373,14 +410,24 @@ class Trainer(object):
                     self.model.zero_grad()
                 outputs, attns, dec_state, memory_bundle = self.model((src, None, edges), tgt, src_lengths, dec_state)
                 assert isinstance(memory_bundle, tuple)
-                memory_bank, tbl_emb = memory_bundle
+                memory_bank, tbl_emb, node_logits = memory_bundle
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
-                        trunc_size, self.shard_size, normalization, retain_graph=True)
+                        trunc_size, self.shard_size, normalization, retain_graph=True, node_logits=node_logits)
 
-                total_stats.update(batch_stats)
-                report_stats.update(batch_stats)
+                # batch_stats = self.train_loss.nonsharded_compute_loss(
+                #         batch, outputs, attns, j,
+                #         trunc_size, normalization, retain_graph=True, node_logits=node_logits)
+                if isinstance(batch_stats, tuple):
+                    assert isinstance(total_stats, tuple)
+                    total_stats[0].update(batch_stats[0])
+                    total_stats[1].update(batch_stats[1])
+                    report_stats[0].update(batch_stats[0])
+                    report_stats[1].update(batch_stats[1])
+                else:
+                    total_stats.update(batch_stats)
+                    report_stats.update(batch_stats)
 
                 # If truncated, don't backprop fully.
                 if dec_state is not None:

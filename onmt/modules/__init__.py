@@ -14,7 +14,7 @@ from onmt.modules.MultiHeadedAttn import MultiHeadedAttention
 from onmt.modules.StackedRNN import StackedLSTM, StackedGRU
 from onmt.modules.Embeddings import Embeddings, PositionalEncoding
 from onmt.modules.WeightNorm import WeightNormConv2d
-from onmt.modules.GraphNets import GATConv
+from onmt.modules.GraphNets import GATConv, GatedGCN
 from onmt.modules.HighwayLayer import HighwayMLP
 
 from onmt.Models import EncoderBase, MeanEncoder, StdRNNDecoder, PointerRNNDecoder, \
@@ -38,7 +38,7 @@ __all__ = [
     MatrixTree, WeightNormConv2d, ConvMultiStepAttention,
     CNNEncoder, CNNDecoder, StackedLSTM, StackedGRU,
     context_gate_factory, CopyGeneratorLossCompute, AudioEncoder,
-    GATConv, HighwayMLP
+    GATConv, HighwayMLP, GatedGCN
     ]
 
 if can_use_sru:

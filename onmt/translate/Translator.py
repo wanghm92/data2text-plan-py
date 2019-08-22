@@ -119,7 +119,7 @@ class Translator(object):
         enc_states, memory_bank = self.model.encoder((src, edges), src_lengths)
         if isinstance(memory_bank, tuple):
             #! stage1: Mean or GraphEncoder
-            memory_bank, _ = memory_bank  # _ is enc_embs for index_selecting tbl embeddings to compute loss in stage2
+            memory_bank, _, _ = memory_bank  # _ is enc_embs for index_selecting tbl embeddings to compute loss in stage2
 
         src_lengths = torch.Tensor(batch_size).type_as(memory_bank.data) \
             .long() \

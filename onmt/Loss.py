@@ -40,7 +40,7 @@ class LossComputeBase(nn.Module):
         self.tgt_vocab = tgt_vocab
         self.padding_idx = tgt_vocab.stoi[onmt.io.PAD_WORD]
 
-    def _make_shard_state(self, batch, output, range_, attns=None):
+    def _make_shard_state(self, batch, output, range_, attns=None, node_logits=None):
         """
         Make shard state dictionary for shards() to return iterable
         shards for efficient loss computation. Subclass must define
@@ -67,7 +67,11 @@ class LossComputeBase(nn.Module):
         """
         return NotImplementedError
 
-    def monolithic_compute_loss(self, batch, output, attns, stage1=True):
+    def monolithic_compute_loss(
+            self, batch, output, attns,
+            stage1=True,
+            node_logits=None,
+        ):
         """
         Compute the forward loss for the batch.
 
@@ -86,15 +90,49 @@ class LossComputeBase(nn.Module):
             range_ = (0, batch.tgt1.size(0))
         else:
             range_ = (0, batch.tgt2.size(0))
-        shard_state = self._make_shard_state(batch, output, range_, attns)
+        shard_state = self._make_shard_state(batch, output, range_, attns=attns, node_logits=node_logits)
         _, batch_stats = self._compute_loss(batch, **shard_state)
 
         return batch_stats
 
+    def nonsharded_compute_loss(
+            self, batch, output, attns,
+            cur_trunc, trunc_size,
+            normalization,
+            stage1=True,
+            retain_graph=False,
+            node_logits=None,
+        ):
+        """
+        Compute the forward loss for the batch.
+
+        Args:
+            batch (batch): batch of labeled examples
+            output (:obj:`FloatTensor`):
+                output of decoder model `[tgt_len x batch x hidden]`
+            attns (dict of :obj:`FloatTensor`) :
+                dictionary of attention distributions
+                `[tgt_len x batch x src_len]`
+            stage1: is it stage1
+        Returns:
+            :obj:`onmt.Statistics`: loss statistics
+        """
+        assert stage1
+        range_ = (cur_trunc, cur_trunc + trunc_size)
+        shard_state = self._make_shard_state(batch, output, range_, attns=attns, node_logits=node_logits)
+
+        loss, batch_stats = self._compute_loss(batch, **shard_state)
+        loss.div(normalization).backward(retain_graph=retain_graph)
+
+        return batch_stats
+
+
     def sharded_compute_loss(
-        self, batch, output, attns,
-        cur_trunc, trunc_size, shard_size,
-        normalization, retain_graph=False
+            self, batch, output, attns,
+            cur_trunc, trunc_size, shard_size,
+            normalization,
+            retain_graph=False,
+            node_logits=None
         ):
         """Compute the forward loss and backpropagate.  Computation is done
         with shards and optionally truncation for memory efficiency.
@@ -124,18 +162,25 @@ class LossComputeBase(nn.Module):
 
         """
         batch_stats = onmt.Statistics()
+        if node_logits is not None:
+            batch_stats = (onmt.Statistics(), onmt.Statistics())
+
         range_ = (cur_trunc, cur_trunc + trunc_size)
-        shard_state = self._make_shard_state(batch, output, range_, attns)
+        shard_state = self._make_shard_state(batch, output, range_, attns=attns, node_logits=node_logits)
 
         for shard in shards(shard_state, shard_size, retain_graph=retain_graph):
             loss, stats = self._compute_loss(batch, **shard)
 
             loss.div(normalization).backward()
-            batch_stats.update(stats)
+            if isinstance(stats, tuple):
+                batch_stats[0].update(stats[0])
+                batch_stats[1].update(stats[1])
+            else:
+                batch_stats.update(stats)
 
         return batch_stats
 
-    def _stats(self, loss, scores, target):
+    def _stats(self, loss, scores, target, binary=False):
         """
         Args:
             loss (:obj:`FloatTensor`): the loss computed by the loss criterion.
@@ -145,10 +190,19 @@ class LossComputeBase(nn.Module):
         Returns:
             :obj:`Statistics` : statistics for this batch.
         """
-        pred = scores.max(1)[1]
+        if binary:
+            pred = scores.lt(0.5).type(target.dtype)
+        else:
+            pred = scores.max(1)[1]
         non_padding = target.ne(self.padding_idx)
-        num_correct = pred.eq(target).masked_select(non_padding).sum()
-        return onmt.Statistics(loss.item(), non_padding.sum().item(), num_correct.item())
+        num_correct = pred.eq(target).masked_select(non_padding).sum().item()
+        if binary:
+            positives = target.eq(1)
+            n_tp = pred.eq(target).masked_select(positives).sum().item()
+            n_fn = pred.ne(target).masked_select(positives).sum().item()
+            return onmt.Statistics(loss.item(), non_padding.sum().item(), num_correct, n_tp=n_tp, n_fn=n_fn)
+        else:
+            return onmt.Statistics(loss.item(), non_padding.sum().item(), num_correct)
 
     def _bottle(self, v):
         return v.view(-1, v.size(2))
@@ -163,11 +217,13 @@ class NMTLossCompute(LossComputeBase):
     """
     def __init__(
         self, generator, tgt_vocab, normalization="sents",
-        label_smoothing=0.0, decoder_type='rnn'
+        label_smoothing=0.0, decoder_type='rnn', cs_loss=False
         ):
         super(NMTLossCompute, self).__init__(generator, tgt_vocab)
         assert (label_smoothing >= 0.0 and label_smoothing <= 1.0)
         self.decoder_type = decoder_type
+        self.cs_loss = cs_loss
+        self.tgt_vocab = tgt_vocab
         if label_smoothing > 0:
             # When label smoothing is turned on,
             # KL-divergence between q_{smoothed ground truth prob.}(w)
@@ -183,34 +239,42 @@ class NMTLossCompute(LossComputeBase):
         else:
             if self.decoder_type == 'pointer':
                 weight = torch.ones(TGT_VOCAB_SIZE)
+                if self.cs_loss:
+                    self.cs_loss_criterion = nn.BCEWithLogitsLoss(
+                        size_average=False)  # the losses are summed for each minibatch
             else:
                 weight = torch.ones(len(tgt_vocab))
             weight[self.padding_idx] = 0
             self.criterion = nn.NLLLoss(weight, size_average=False)
         self.confidence = 1.0 - label_smoothing
 
-    def _make_shard_state(self, batch, output, range_, attns=None):
+    def _make_shard_state(self, batch, output, range_, attns=None, node_logits=None):
         assert attns is not None
-        if self.decoder_type == 'pointer':
-            return {
-                "output": attns['std'],
-                # ! NOTE: range_ is 0 to target_size for tgt1_planning
-                "target": batch.tgt1_planning[range_[0] + 1: range_[1]]
-            }
-        else:
-            assert False
-            return {
-                "output": output,
-                "target": batch.tgt[range_[0] + 1: range_[1]],
-            }
+        assert self.decoder_type == 'pointer'
+        if self.cs_loss:
+            assert node_logits is not None
+        return {
+            "output": attns['std'],
+            #! NOTE: range_ is 0 to target_size for tgt1_planning
+            "target": batch.tgt1_planning[range_[0] + 1: range_[1]],
+            "node_logits": node_logits.unsqueeze(0) if self.cs_loss else None
+        }
 
-    def _compute_loss(self, batch, output, target):
+    def _compute_loss(self, batch, output, target, node_logits=None):
+
         if self.decoder_type == 'pointer':
-            scores = self._bottle(output)
+            scores = self._bottle(output)  # [tgt_len, batch, src_len] --> [tgt_len*batch, src_len]
+            if self.cs_loss:
+                node_logits = node_logits.squeeze(0).squeeze(-1)
+                cs_gtruth = torch.zeros_like(node_logits, requires_grad=False)
+                # reference: https://discuss.pytorch.org/t/convert-int-into-one-hot-format/507/3
+                cs_gtruth.scatter_(dim=0, index=target, value=1)
+                # node_logits = self._bottle(node_logits)
+                # cs_gtruth = self._bottle(cs_gtruth)
         else:
             scores = self.generator(self._bottle(output))
 
-        gtruth = target.view(-1)
+        gtruth = target.view(-1)  # [tgt_len, batch] --> [tgt_len*batch]
         if self.confidence < 1:
             assert False
             tdata = gtruth.data
@@ -224,6 +288,7 @@ class NMTLossCompute(LossComputeBase):
             gtruth = Variable(tmp_, requires_grad=False)
 
         loss = self.criterion(scores, gtruth)
+        # print("loss {} = {}".format(loss.shape, loss))
         '''
         if self.confidence < 1:
             # Default: report smoothed ppl.
@@ -232,9 +297,16 @@ class NMTLossCompute(LossComputeBase):
         else:
         '''
         loss_data = loss.data.clone()
-
         stats = self._stats(loss_data, scores.data.clone(), gtruth.data.clone())
-
+        if self.cs_loss:
+            cs_gtruth[self.tgt_vocab.stoi[onmt.io.PAD_WORD], :] = 0  # masking <blank>
+            cs_loss = self.cs_loss_criterion(node_logits, cs_gtruth)
+            # print("cs_loss {} = {}".format(cs_loss.shape, cs_loss))
+            loss += cs_loss
+            loss_data = cs_loss.data.clone()
+            cs_scores = torch.sigmoid(node_logits).data.clone()
+            cs_stats = self._stats(loss_data, cs_scores, cs_gtruth.data.clone(), True)
+            stats = (stats, cs_stats)
         return loss, stats
 
 
@@ -274,7 +346,6 @@ def shards(state, shard_size, eval=False, retain_graph=False):
         # non_none: the subdict of the state dictionary where the values
         # are not None.
         non_none = dict(filter_shard_state(state, shard_size))
-
         # Now, the iteration:
         # state is a dictionary of sequences of tensor-like but we
         # want a sequence of dictionaries of tensors.

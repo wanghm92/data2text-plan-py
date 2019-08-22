@@ -65,19 +65,21 @@ def make_encoder(opt, src_bundle, stage1=True):
             return MeanEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, dropout=opt.dropout,
                                 no_self_attn=opt.stage1_no_self_attn,
                                 attn_hidden=opt.attn_hidden,
-                                output_layer=opt.encoder_outlayer)
+                                cs_loss=opt.csl)
         elif opt.encoder_type1 == 'graph':
             return GraphEncoder(opt.enc_layers1, src_bundle, opt.src_word_vec_size, dropout=opt.dropout,
                                 no_self_attn=opt.stage1_no_self_attn,
                                 attn_hidden=opt.attn_hidden,
                                 output_layer=opt.encoder_outlayer,
+                                encoder_graph_fuse=opt.encoder_graph_fuse,
                                 edge_aware=opt.edge_aware,
-                                edge_attn_bias=opt.edge_attn_bias)
+                                edge_aggr=opt.edge_aggr,
+                                cs_loss=opt.csl)
         else:
             raise NotImplementedError("encoder_type = {} is not implemented".format(opt.encoder_type))
     else:
         # "rnn" or "brnn"
-        embeddings, _, _, _ = src_bundle
+        embeddings, _, _ = src_bundle
         return RNNEncoder(
             opt.rnn_type, opt.brnn2, opt.enc_layers2,
             opt.rnn_size, opt.dropout, embeddings,
@@ -169,9 +171,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
 
     #! edge_embeddings
     edge_dict = fields['edge_labels'].vocab if model_opt.encoder_type1 == 'graph' else None
-    # TODO: init with 0s?
     edge_embeddings = None if edge_dict is None else make_embeddings(model_opt, edge_dict, [])
-    edge_scalar_embedding = None if edge_dict is None else make_embeddings(model_opt, edge_dict, [], dim=1)
 
     # --- table-reconstruction ---
     table_embeddings = None
@@ -186,7 +186,7 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
 
     #! make_encoder
     print("edge_embeddings = {}, table_embeddings = {}".format(edge_embeddings, table_embeddings))
-    src_bundle = (src_embeddings, table_embeddings, edge_embeddings, edge_scalar_embedding)
+    src_bundle = (src_embeddings, table_embeddings, edge_embeddings)
     encoder = make_encoder(model_opt, src_bundle, stage1)
 
     '''

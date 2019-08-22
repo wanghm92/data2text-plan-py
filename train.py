@@ -103,7 +103,7 @@ def report_func(epoch, batch, num_batches,
         report_stats(Statistics): updated Statistics instance.
     """
     if batch % opt.report_every == -1 % opt.report_every:
-        report_stats.output(epoch, batch + 1, num_batches, start_time)
+        report_stats.output(epoch, batch + 1, num_batches, start_time, prefix=suffix)
         if opt.exp_host:
             report_stats.log("progress", experiment, lr)
         if opt.tensorboard:
@@ -220,7 +220,10 @@ def make_loss_compute(model, tgt_vocab, opt, stage1=True):
     if stage1:
         compute = onmt.Loss.NMTLossCompute(
             model.generator, tgt_vocab,
-            label_smoothing=opt.label_smoothing, decoder_type=opt.decoder_type1)
+            label_smoothing=opt.label_smoothing,
+            decoder_type=opt.decoder_type1,
+            cs_loss=opt.csl
+        )
 
     else:
         if opt.trl:
@@ -269,15 +272,21 @@ def train_model(model, model2, fields, optim, optim2, data_type, model_opt):
 
         #! 1. Train for one epoch on the training set
         train_iter = make_dataset_iter(lazily_load_dataset("train"), fields, opt)
-        train_stats, train_stats2 = trainer.train(train_iter, epoch, report_func)
-        print('Train perplexity: %g' % train_stats.ppl())
+        train_stats, train_stats2 = trainer.train(train_iter, epoch, report_func=report_func, cs_loss=opt.csl)
+        if opt.csl:
+            train_stats, train_stats_bce = train_stats
+            print('BCE Train accuracy: {}'.format(train_stats_bce.f1()))
         print('Train accuracy: %g' % train_stats.accuracy())
+        print('Train perplexity: %g' % train_stats.ppl())
         print('Train perplexity2: %g' % train_stats2.ppl())
         print('Train accuracy2: %g' % train_stats2.accuracy())
 
         #! 2. Validate on the validation set
         valid_iter = make_dataset_iter(lazily_load_dataset("valid"), fields, opt, is_train=False)
-        valid_stats, valid_stats2 = trainer.validate(valid_iter)
+        valid_stats, valid_stats2 = trainer.validate(valid_iter, cs_loss=opt.csl)
+        if opt.csl:
+            valid_stats, valid_stats_bce = valid_stats
+            print('BCE Validation accuracy: {}'.format(valid_stats_bce.f1()))
         print('Validation perplexity: %g' % valid_stats.ppl())
         print('Validation accuracy: %g' % valid_stats.accuracy())
         print('Validation perplexity2: %g' % valid_stats2.ppl())

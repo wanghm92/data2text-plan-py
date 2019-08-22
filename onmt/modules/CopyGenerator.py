@@ -198,7 +198,7 @@ class CopyGeneratorLossCompute(onmt.Loss.LossComputeBase):
         self.criterion = CopyGeneratorCriterion(len(tgt_vocab), force_copy, self.padding_idx)
         self.switch_loss_criterion = nn.BCEWithLogitsLoss(size_average=False)  # the losses are summed for each minibatch
 
-    def _make_shard_state(self, batch, output, range_, attns):
+    def _make_shard_state(self, batch, output, range_, attns=None, node_logits=None):
         """ See base class for args description. """
         if getattr(batch, "alignment", None) is None:
             raise AssertionError("using -copy_attn you need to pass in -dynamic_dict during preprocess stage.")
@@ -274,7 +274,7 @@ class CopyGeneratorLossComputeV2(CopyGeneratorLossCompute):
         )
         self.table_recon_criterion = TableReconstructionCriterion(self.padding_idx)
 
-    def _make_shard_state(self, batch, output, range_, attns):
+    def _make_shard_state(self, batch, output, range_, attns=None, node_logits=None):
         """ See base class for args description. """
         if getattr(batch, "alignment", None) is None:
             raise AssertionError("using -copy_attn you need to pass in -dynamic_dict during preprocess stage.")

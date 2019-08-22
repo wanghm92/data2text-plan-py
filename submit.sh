@@ -1,15 +1,19 @@
-for EDGE_DIR in one #two
+#!/usr/bin/env bash
+for EDGE_DIR in small2big # big2small
     do
-    for EDGE_AWARE in add # linear
+    for EDGE_AWARE in linear #add
         do
-        for EDGE_ATTN in weighted # scalar
+        for EDGE_AGGR in max #mean
             do
-            for OUT_LAYER in add-on-sigmoid # dense # highway #res  sigmoid-on-add # highway-add
+            for NODE_FUSE in highway # dense
                 do
-                LOGNAME=/mnt/cephfs2/nlp/hongmin.wang/table2text/data2text-plan-py/log/graph/new/evaluation/graph_inlg_new_edgedir-$EDGE_DIR\_edgeaware-$EDGE_AWARE\_edgeattn-$EDGE_ATTN\_outlayer-$OUT_LAYER\_eval
-                printf "LOGNAME = $LOGNAME\n"
-                qsub -q g.q -l gpu=1 -l h=GPU_10_252_192_[2-3]* -cwd -C "" -e $LOGNAME.e.log -o $LOGNAME.o.log run_new.sh $EDGE_DIR $EDGE_AWARE $EDGE_ATTN $OUT_LAYER
-                sleep 5
+                for OUT_LAYER in highway-fuse #add highway-graph #
+                do
+                    LOGNAME=/mnt/cephfs2/nlp/hongmin.wang/table2text/nbagraph2summary/log/graph/new/evaluation/graph_inlg_new_edgedir-$EDGE_DIR\_edgeaware-$EDGE_AWARE\_edgeaggr-$EDGE_AGGR\_graphfuse-$NODE_FUSE\_outlayer-$OUT_LAYER\_csl_eval
+                    printf "LOGNAME = $LOGNAME\n"
+                    qsub -q g.q -l gpu=1 -l h=GPU_10_252_192_5* -cwd -C "" -e $LOGNAME.e.log -o $LOGNAME.o.log run_new.sh $EDGE_DIR $EDGE_AWARE $EDGE_AGGR $NODE_FUSE $OUT_LAYER
+                    sleep 5
+                done
             done
         done
     done

@@ -9,6 +9,51 @@ import onmt
 from onmt.modules.UtilClass import glorot, zeros
 
 
+class GatedGCN(MessagePassing):
+
+    def __init__(
+        self, in_channels, out_channels, edge_aware='add', edge_aggr='mean', **kwargs):
+        super(GatedGCN, self).__init__(aggr=edge_aggr, **kwargs)
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.edge_node_fuse = nn.Linear(2 * in_channels, out_channels)
+
+        print(' ** [GatedGCN] edge_aware = {}'.format(edge_aware))
+        self.edge_aware = edge_aware
+        if self.edge_aware == 'linear':
+            self.edge_neighbour_fuse = nn.Linear(2 * in_channels, out_channels)
+
+    def forward(self, x, edge_index, edge_attr):
+
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, edge_index_i, x_i, x_j, edge_attr):
+
+        x_j = x_j.view(-1, self.out_channels)
+        x_i = x_i.view(-1, self.out_channels)
+
+        #! combine node itself with the edge types
+        node_edge_aware = self.edge_node_fuse(torch.cat([x_i, edge_attr], -1))
+        #! compute a node-edge-aware elementwise gate to filter neighbour information
+        gated_neighbours = torch.sigmoid(node_edge_aware).mul(x_j)
+
+        #! add edge information back to message passed to target
+        if self.edge_aware == 'add':
+            out = gated_neighbours + edge_attr
+        elif self.edge_aware == 'linear':
+            concat_c = torch.cat([gated_neighbours, edge_attr], -1)
+            out = self.edge_neighbour_fuse(concat_c)
+
+        return out
+
+    def update(self, aggr_out):
+        return aggr_out
+
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__, self.in_channels, self.out_channels)
+
+
 class GATConv(MessagePassing):
     r"""The graph attentional operator from the `"Graph Attention Networks"
     <https://arxiv.org/abs/1710.10903>`_ paper

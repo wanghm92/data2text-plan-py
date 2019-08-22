@@ -60,13 +60,16 @@ def model_opts(parser):
     group.add_argument('-edge_aware', type=str, default='linear',
                         choices=['linear', 'add'],
                         help="""How graph edge embeddings are integrated with the node attributes before aggregation""")
-    group.add_argument('-edge_attn_bias', type=str, default='scalar',
-                        choices=['scalar', 'weighted'],
+    group.add_argument('-edge_aggr', type=str, default='mean',
+                        choices=['mean', 'max'],
+                        help="""The aggregation scheme to use for GNN""")
+    group.add_argument('-encoder_graph_fuse', type=str, default='highway',
+                        choices=['dense', 'highway'],
                         help="""Whether to use a seperately defined 1-D (scalar) edge bias
                         or weighted sum on the edge embeddings when integrating into the attention score calculation""")
     #! NOTE: the meaning of different encoder_outlayer types are different for Mean/Graph encoders
-    group.add_argument('-encoder_outlayer', type=str, default='gating',
-                        choices=['gating', 'add', 'dense', 'highway', 'res', 'sigmoid-on-add', 'add-on-sigmoid', 'highway-add'],
+    group.add_argument('-encoder_outlayer', type=str, default='highway',
+                        choices=['add', 'highway-graph', 'highway-fuse'],
                         help="""Type of encoder output layer to use. (gating and add not available for graph model)""")
     group.add_argument('-decoder_type1', type=str, default='rnn',
                         choices=['rnn', 'transformer', 'cnn', 'pointer'],
@@ -150,6 +153,8 @@ def model_opts(parser):
                         help="Stage1 pre process")
     group.add_argument('-trl', action="store_true",
                         help="""Whether to use table reconstruction loss""")
+    group.add_argument('-csl', action="store_true",
+                        help="""Whether to use content selection BCE loss""")
 
 def preprocess_opts(parser):
     # Data options

@@ -13,10 +13,10 @@ class GatedGCN(MessagePassing):
 
     def __init__(
         self, in_channels, out_channels, edge_aware='add', edge_aggr='mean', **kwargs):
-        super(GatedGCN, self).__init__(aggr=edge_aggr, **kwargs)
+        aggr = 'add' if edge_aggr == 'weighted' else edge_aggr  # mean/max
+        super(GatedGCN, self).__init__(aggr=aggr, **kwargs)
         self.in_channels = in_channels
         self.out_channels = out_channels
-
         self.edge_node_fuse = nn.Linear(2 * in_channels, out_channels)
 
         print(' ** [GatedGCN] edge_aware = {}'.format(edge_aware))
@@ -24,11 +24,13 @@ class GatedGCN(MessagePassing):
         if self.edge_aware == 'linear':
             self.edge_neighbour_fuse = nn.Linear(2 * in_channels, out_channels)
 
-    def forward(self, x, edge_index, edge_attr):
+        self.edge_aggr = edge_aggr
 
-        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+    def forward(self, x, edge_index, edge_attr, edge_norm):
 
-    def message(self, edge_index_i, x_i, x_j, edge_attr):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr, edge_norm=edge_norm)
+
+    def message(self, edge_index_i, x_i, x_j, edge_attr, edge_norm):
 
         x_j = x_j.view(-1, self.out_channels)
         x_i = x_i.view(-1, self.out_channels)
@@ -45,9 +47,15 @@ class GatedGCN(MessagePassing):
             concat_c = torch.cat([gated_neighbours, edge_attr], -1)
             out = self.edge_neighbour_fuse(concat_c)
 
+        if self.edge_aggr == 'weighted':
+            #! normalize neighbours by coefficients
+            assert edge_norm is not None
+            out = torch.mul(out, edge_norm)
+
         return out
 
     def update(self, aggr_out):
+        #! nodes without incoming edges have 0s aggr_out
         return aggr_out
 
     def __repr__(self):

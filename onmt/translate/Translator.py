@@ -114,7 +114,7 @@ class Translator(object):
         edges = None
         if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
             edge_labels, num_edges = batch.edge_labels
-            edges = (batch.edge_left, batch.edge_right, edge_labels, num_edges)
+            edges = (batch.edge_left, batch.edge_right, batch.edge_norms, edge_labels, num_edges)
 
         enc_states, memory_bank = self.model.encoder((src, edges), src_lengths)
         if isinstance(memory_bank, tuple):

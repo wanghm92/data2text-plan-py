@@ -273,7 +273,7 @@ class Trainer(object):
             edges = None
             if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
                 edge_labels, num_edges = batch.edge_labels
-                edges = (batch.edge_left, batch.edge_right, edge_labels, num_edges)
+                edges = (batch.edge_left, batch.edge_right, batch.edge_norms, edge_labels, num_edges)
 
             tgt = batch.tgt1_planning.unsqueeze(2)
             # F-prop through the model.
@@ -397,7 +397,7 @@ class Trainer(object):
             edges = None
             if 'edge_left' in batch.fields and 'edge_right' in batch.fields:
                 edge_labels, num_edges = batch.edge_labels
-                edges = (batch.edge_left, batch.edge_right, edge_labels, num_edges)
+                edges = (batch.edge_left, batch.edge_right, batch.edge_norms, edge_labels, num_edges)
 
             for j in range(0, target_size-1, trunc_size):
                 #setting to value of tgt_planning

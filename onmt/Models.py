@@ -168,7 +168,7 @@ class GraphEncoder(EncoderBase):
 
     def _node_encoding(self, graph_batch, shape, non_linear=False):
 
-        out = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_attr)
+        out = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_attr, graph_batch.edge_norm)
         if non_linear:
             out = self.dropout(F.elu(out))
         out = out.reshape(shape)
@@ -194,19 +194,21 @@ class GraphEncoder(EncoderBase):
         return out
 
     def _construct_data_list(self, edges, emb):
-        edge_left, edge_right, edge_label, num_edge = edges
+        edge_left, edge_right, edge_norms, edge_label, num_edge = edges
         edge_embed = self.dropout(self.edge_embeddings(edge_label.unsqueeze(-1)))
         data_list = []
-        for left, right, edge_attr, length, x in \
+        for left, right, norm, edge_attr, length, x in \
                 zip(torch.split(edge_left, 1, dim=1),
                     torch.split(edge_right, 1, dim=1),
+                    torch.split(edge_norms.detach(), 1, dim=1),
                     torch.split(edge_embed, 1, dim=1),
                     torch.split(num_edge, 1),
                     torch.split(emb, 1, dim=1)):
             edge_index = torch.cat([left, right], dim=1).t().contiguous()[:, :length.item()]
-            edge_attr = edge_attr.squeeze(1)[:length.item(), :]  # cut off by actual number of edges
+            edge_attr = edge_attr.squeeze(1)[:length.item(), :]  #! NOTE cut off by actual number of edges
+            norm = norm[:length.item(), :]
             x = x.squeeze(1)
-            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, edge_norm=norm)
             data_list.append(data)
         return data_list
 

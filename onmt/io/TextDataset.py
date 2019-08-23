@@ -68,6 +68,7 @@ class TextDataset(ONMTDatasetBase):
         if edge_file is not None:
             with jsonlines.open(edge_file, 'r') as f:
                 edges = [i for i in f.iter(type=dict, skip_invalid=True)]
+        print("edges loaded")
 
         # dictionaries are joint together
         if tgt2_examples_iter is not None:
@@ -178,12 +179,16 @@ class TextDataset(ONMTDatasetBase):
                 edge_left = []
                 edge_right = []
                 edge_labels = []
+                edge_norms = []
                 for k, v in edges[loop_index].items():
                     left, right = k.split(',')
                     edge_left.append(int(left))
                     edge_right.append(int(right))
-                    edge_labels.append(v)
+                    label, norm = v
+                    edge_labels.append(label)
+                    edge_norms.append(float(norm))
                 example["edge_left"] = torch.LongTensor(edge_left)
+                example["edge_norms"] = torch.FloatTensor(edge_norms)
                 example["edge_right"] = torch.LongTensor(edge_right)
                 example["edge_labels"] = edge_labels
 
@@ -306,6 +311,11 @@ class TextDataset(ONMTDatasetBase):
         fields["edge_labels"] = BoxField(
             pad_token=PAD_WORD,
             include_lengths=True
+        )
+        fields["edge_norms"] = BoxField(
+            use_vocab=False,
+            pad_token=PAD_INDEX,
+            tensor_type=torch.FloatTensor
         )
         # ! NOTE: PAD_INDEX for <blank>
         fields["edge_left"] = BoxField(

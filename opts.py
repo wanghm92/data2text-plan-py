@@ -60,9 +60,9 @@ def model_opts(parser):
     group.add_argument('-edge_aware', type=str, default='linear',
                         choices=['linear', 'add'],
                         help="""How graph edge embeddings are integrated with the node attributes before aggregation""")
-    group.add_argument('-edge_aggr', type=str, default='mean',
-                        choices=['mean', 'max'],
-                        help="""The aggregation scheme to use for GNN""")
+    group.add_argument('-edge_aggr', type=str, default='add',
+                        choices=['weighted', 'mean', 'max'],
+                        help="""The aggregation scheme to use for GNN. NOTE: add is weighted average by pre-defined constants""")
     group.add_argument('-encoder_graph_fuse', type=str, default='highway',
                         choices=['dense', 'highway'],
                         help="""Whether to use a seperately defined 1-D (scalar) edge bias

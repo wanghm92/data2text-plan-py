@@ -10,16 +10,18 @@ class Beam(object):
     Takes care of beams, back pointers, and scores.
 
     Args:
-       size (int): beam size
-       pad, bos, eos (int): indices of padding, beginning, and ending.
-       n_best (int): nbest size to use
-       cuda (bool): use gpu
-       global_scorer (:obj:`GlobalScorer`)
+        size (int): beam size
+        pad, bos, eos (int): indices of padding, beginning, and ending.
+        n_best (int): nbest size to use
+        cuda (bool): use gpu
+        global_scorer (:obj:`GlobalScorer`)
     """
     def __init__(self, size, pad, bos, eos,
-                 n_best=1, cuda=False,
-                 global_scorer=None,
-                 min_length=0, stepwise_penalty=False):
+                    n_best=1, cuda=False,
+                    global_scorer=None,
+                    min_length=0,
+                    stepwise_penalty=False,
+                    ):
 
         self.size = size
         self.tt = torch.cuda if cuda else torch
@@ -57,6 +59,12 @@ class Beam(object):
         # Apply Penalty at every step
         self.stepwise_penalty = stepwise_penalty
 
+        self.mask = None
+
+    def _init_mask(self, num_words):
+        # num_words = src_len for ptr-net
+        self.mask = self.tt.BoolTensor(self.size, num_words).zero_()
+
     def get_current_state(self):
         "Get the outputs for the current timestep."
         return self.next_ys[-1]
@@ -65,7 +73,7 @@ class Beam(object):
         "Get the backpointers for the current timestep."
         return self.prev_ks[-1]
 
-    def advance(self, word_probs, attn_out):
+    def advance(self, word_probs, attn_out, dont_mask=None, stage1=False, disable_dup=False):
         """
         Given prob over words for every last beam `wordLk` and attention
         `attn_out`: Compute and update the beam search.
@@ -85,6 +93,31 @@ class Beam(object):
         if cur_len < self.min_length:
             for k in range(len(word_probs)):
                 word_probs[k][self._eos] = -1e20
+
+        if disable_dup and stage1 and cur_len > 1:
+            # prediction of time -1
+            cur_state = self.get_current_state()
+            # prediction of time -2
+            prev_state = self.next_ys[-2]
+            # back tracker: time -1 's origin in time -2
+            prev_origin = self.get_current_origin()
+            # mask each single beam
+            for b in range(self.size):
+                # word id predicted in time -2 preceding the time -1 word in this beam
+                idx = prev_state[prev_origin[b]]
+                # keep record of this generated word in self.mask
+                if dont_mask is not None:
+                    # some special positions are allowed to repeat
+                    self.mask[b][idx] = True & dont_mask[b][idx].item()
+                else:
+                    self.mask[b][idx] = True
+                # temporarily mask predictions at time -1, don't record in self.mask
+                # since it may drop out of the beam after this time step
+                word_probs[b][cur_state[b]] = -1e20
+
+            # mask all previously generated tokens according to self.mask
+            word_probs.masked_fill_(self.mask, -1e20)
+
         # Sum the previous scores.
         if len(self.prev_ks) > 0:
             beam_scores = word_probs + \
@@ -157,14 +190,13 @@ class GNMTGlobalScorer(object):
     "Google's Neural Machine Translation System" :cite:`wu2016google`
 
     Args:
-       alpha (float): length parameter
-       beta (float):  coverage parameter
+        alpha (float): length parameter
+        beta (float):  coverage parameter
     """
     def __init__(self, alpha, beta, cov_penalty, length_penalty):
         self.alpha = alpha
         self.beta = beta
-        penalty_builder = Penalties.PenaltyBuilder(cov_penalty,
-                                                   length_penalty)
+        penalty_builder = Penalties.PenaltyBuilder(cov_penalty, length_penalty)
         # Term will be subtracted from probability
         self.cov_penalty = penalty_builder.coverage_penalty()
         # Probability will be divided by this
@@ -174,13 +206,11 @@ class GNMTGlobalScorer(object):
         """
         Rescores a prediction based on penalty functions
         """
-        normalized_probs = self.length_penalty(beam,
-                                               logprobs,
-                                               self.alpha)
+        normalized_probs = self.length_penalty(beam, logprobs, self.alpha)
         if not beam.stepwise_penalty:
             penalty = self.cov_penalty(beam,
-                                       beam.global_state["coverage"],
-                                       self.beta)
+                                        beam.global_state["coverage"],
+                                        self.beta)
             normalized_probs -= penalty
 
         return normalized_probs
@@ -192,8 +222,8 @@ class GNMTGlobalScorer(object):
         if "prev_penalty" in beam.global_state.keys():
             beam.scores.add_(beam.global_state["prev_penalty"])
             penalty = self.cov_penalty(beam,
-                                       beam.global_state["coverage"] + attn,
-                                       self.beta)
+                                        beam.global_state["coverage"] + attn,
+                                        self.beta)
             beam.scores.sub_(penalty)
 
     def update_global_state(self, beam):

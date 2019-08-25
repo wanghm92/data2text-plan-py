@@ -539,7 +539,11 @@ def translate_opts(parser):
                         help='Window type for spectrogram generation')
 
     group.add_argument('-stage1', action="store_true",
-                        help="Stage1 pre process")
+                        help="Stage1 flag for decoding")
+    group.add_argument('-allow_team', action="store_true",
+                        help="If team name, alias, city are allowed to be repeated")
+    group.add_argument('-disable_dup', action="store_true",
+                        help="If records are allowed to repeat")
 
 def add_md_help_argument(parser):
     parser.add_argument('-md', action=MarkdownHelpAction,

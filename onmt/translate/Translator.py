@@ -32,7 +32,8 @@ class Translator(object):
         cuda=False,
         beam_trace=False,
         min_length=0,
-        stepwise_penalty=False
+        stepwise_penalty=False,
+        allow_team=False,
     ):
         self.model = model
         self.model2 = model2
@@ -45,7 +46,7 @@ class Translator(object):
         self.cuda = cuda
         self.min_length = min_length
         self.stepwise_penalty = stepwise_penalty
-
+        self.allow_team = allow_team
         # for debugging
         self.beam_accum = None
         if beam_trace:
@@ -55,7 +56,16 @@ class Translator(object):
                 "scores": [],
                 "log_probs": []}
 
-    def translate_batch(self, batch, data, stage1):
+    def _build_dont_mask(self, batch):
+        keys = ['TEAM-NAME', 'TEAM-CITY', 'TEAM-ALIAS', 'TEAM-WINS', 'TEAM-LOSSES']
+        lkt = self.fields['src1_feat_1'].vocab.stoi  # rcd_types
+        input_indices = batch.src1_feat_1.data.clone()
+        dont_mask = input_indices.ne(lkt[keys[0]])  # initialize
+        for k in keys[1:]:
+            dont_mask = dont_mask & input_indices.ne(lkt[k])  # AND here to accumulate all 'True's
+        return dont_mask
+
+    def translate_batch(self, batch, data, stage1, disable_dup=False):
         """
         Translate a batch of sentences.
 
@@ -82,6 +92,7 @@ class Translator(object):
             tgt = "tgt2"
 
         vocab = self.fields[tgt].vocab
+        #! every sample within this batch has its beam
         beam = [onmt.translate.Beam(beam_size, n_best=self.n_best,
                                     cuda=self.cuda,
                                     global_scorer=self.global_scorer,
@@ -145,6 +156,10 @@ class Translator(object):
         memory_lengths = src_lengths.repeat(beam_size)
         dec_states.repeat_beam_size_times(beam_size)
 
+        if stage1:
+            dont_mask = self._build_dont_mask(batch)  # src_len * batch_size
+            for b in beam:
+                b._init_mask(dont_mask.size(0))  # src_len
         # (3) run the decoder to generate sentences, using beam search.
         for i in range(self.max_length):
             if all((b.done() for b in beam)):
@@ -189,12 +204,19 @@ class Translator(object):
                 # beam x tgt_vocab
                 out = out.log()
                 beam_attn = unbottle(attn["copy"])
-            # (c) Advance each beam.
+            # (c) Advance each beam in this batch
             for j, b in enumerate(beam):
                 if stage1:
+                    if self.allow_team:
+                        dont_mask_beam = dont_mask[:, j].unsqueeze(0).expand(beam_size, -1)  # beam_size * src_len
+                    else:
+                        dont_mask_beam = None
                     b.advance(
                         out[:, j],
-                        torch.exp(unbottle(attn["std"]).data[:, j, :memory_lengths[j]]))
+                        torch.exp(unbottle(attn["std"]).data[:, j, :memory_lengths[j]]),
+                        dont_mask=dont_mask_beam,
+                        stage1=stage1,
+                        disable_dup=disable_dup)
                 else:
                     b.advance(out[:, j],
                         beam_attn.data[:, j, :memory_lengths[j]])

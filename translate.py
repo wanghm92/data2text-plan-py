@@ -123,7 +123,8 @@ def main():
         cuda=opt.cuda,
         beam_trace=opt.dump_beam != "",
         min_length=opt.min_length,
-        stepwise_penalty=opt.stepwise_penalty)
+        stepwise_penalty=opt.stepwise_penalty,
+        allow_team=opt.allow_team)
     builder = onmt.translate.TranslationBuilder(
         data, translator.fields,
         opt.n_best, opt.replace_unk, has_tgt=False)
@@ -135,7 +136,7 @@ def main():
     stage1 = opt.stage1
     for batch in tqdm(data_iter):
         #! NOTE translation starts here
-        batch_data = translator.translate_batch(batch, data, stage1)
+        batch_data = translator.translate_batch(batch, data, stage1, opt.disable_dup)
         translations = builder.from_batch(batch_data, stage1)
 
         for trans in translations:

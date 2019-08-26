@@ -543,7 +543,7 @@ def translate_opts(parser):
     group.add_argument('-allow_team', action="store_true",
                         help="If team name, alias, city are allowed to be repeated")
     group.add_argument('-disable_dup', action="store_true",
-                        help="If records are allowed to repeat")
+                        help="If records are restricted not to repeat")
 
 def add_md_help_argument(parser):
     parser.add_argument('-md', action=MarkdownHelpAction,

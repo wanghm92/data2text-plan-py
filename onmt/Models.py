@@ -125,7 +125,8 @@ class GraphEncoder(EncoderBase):
         self, num_layers, src_bundle, emb_size,
         dropout=0.0, no_self_attn=False, attn_hidden=0, attn_type="general", coverage_attn=False,
         output_layer='add', encoder_graph_fuse = 'highway',
-        edge_aware='linear', edge_aggr='mean', cs_loss=False
+        edge_aware='linear', edge_aggr='mean', edge_nei_fuse='uni', num_edge_types=-1,
+        cs_loss=False
         ):
         super(GraphEncoder, self).__init__()
         self.num_layers = num_layers
@@ -146,7 +147,11 @@ class GraphEncoder(EncoderBase):
             self.attn = onmt.modules.GlobalSelfAttention(
                 emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
 
-        self.conv = onmt.modules.GatedGCN(emb_size, emb_size, edge_aware=edge_aware, edge_aggr=edge_aggr)
+        self.conv = onmt.modules.GatedGCN(emb_size, emb_size,
+                                            edge_aware=edge_aware,
+                                            edge_aggr=edge_aggr,
+                                            num_edge_types=num_edge_types,
+                                            edge_nei_fuse=edge_nei_fuse)
 
         self.linear_global = nn.Linear(emb_size * 2, emb_size, bias=False)
 
@@ -163,12 +168,11 @@ class GraphEncoder(EncoderBase):
             self.graph_highway = onmt.modules.HighwayMLP(emb_size)
         elif self.encoder_graph_fuse == 'dense':
             self.graph_linear = nn.Linear(emb_size * 2, emb_size)
-        else:
+        elif self.encoder_graph_fuse != 'nothing':
             raise ValueError('{} is not supported'.format(self.encoder_graph_fuse))
 
     def _node_encoding(self, graph_batch, shape, non_linear=False):
-
-        out = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_attr, graph_batch.edge_norm)
+        out = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_attr, graph_batch.edge_label, graph_batch.edge_norm)
         if non_linear:
             out = self.dropout(F.elu(out))
         out = out.reshape(shape)
@@ -183,6 +187,8 @@ class GraphEncoder(EncoderBase):
             neighbour_node_fuse = self.graph_highway(emb, graph_vectors)
         elif self.encoder_graph_fuse == 'dense':
             neighbour_node_fuse = self.graph_linear(torch.cat([emb, graph_vectors], 2))
+        elif self.encoder_graph_fuse == 'nothing':
+            neighbour_node_fuse = graph_vectors
 
         if self.output_layer == 'highway-graph':
             out = self.out_highway(global_gated_out, graph_vectors)
@@ -197,18 +203,20 @@ class GraphEncoder(EncoderBase):
         edge_left, edge_right, edge_norms, edge_label, num_edge = edges
         edge_embed = self.dropout(self.edge_embeddings(edge_label.unsqueeze(-1)))
         data_list = []
-        for left, right, norm, edge_attr, length, x in \
+        for left, right, norm, edge_attr, label, length, x in \
                 zip(torch.split(edge_left, 1, dim=1),
                     torch.split(edge_right, 1, dim=1),
                     torch.split(edge_norms.detach(), 1, dim=1),
                     torch.split(edge_embed, 1, dim=1),
+                    torch.split(edge_label, 1, dim=1),
                     torch.split(num_edge, 1),
                     torch.split(emb, 1, dim=1)):
             edge_index = torch.cat([left, right], dim=1).t().contiguous()[:, :length.item()]
             edge_attr = edge_attr.squeeze(1)[:length.item(), :]  #! NOTE cut off by actual number of edges
             norm = norm[:length.item(), :]
+            label = label[:length.item()]-2  # <unk>, <blank>
             x = x.squeeze(1)
-            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, edge_norm=norm)
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr, edge_norm=norm, edge_label=label)
             data_list.append(data)
         return data_list
 

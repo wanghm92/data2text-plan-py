@@ -50,7 +50,7 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         discard_word=discard_word)
 
 
-def make_encoder(opt, src_bundle, stage1=True):
+def make_encoder(opt, src_bundle, stage1=True, num_edge_types=-1):
     """
     Various encoder dispatcher function.
     Args:
@@ -74,6 +74,8 @@ def make_encoder(opt, src_bundle, stage1=True):
                                 encoder_graph_fuse=opt.encoder_graph_fuse,
                                 edge_aware=opt.edge_aware,
                                 edge_aggr=opt.edge_aggr,
+                                num_edge_types=num_edge_types,
+                                edge_nei_fuse=opt.edge_nei_fuse,
                                 cs_loss=opt.csl)
         else:
             raise NotImplementedError("encoder_type = {} is not implemented".format(opt.encoder_type))
@@ -187,7 +189,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     #! make_encoder
     print("edge_embeddings = {}, table_embeddings = {}".format(edge_embeddings, table_embeddings))
     src_bundle = (src_embeddings, table_embeddings, edge_embeddings)
-    encoder = make_encoder(model_opt, src_bundle, stage1)
+    num_edge_types = len(fields['edge_labels'].vocab)-2  # <unk> and <blank>
+    encoder = make_encoder(model_opt, src_bundle, stage1, num_edge_types=num_edge_types)
 
     '''
     elif model_opt.model_type == "img":

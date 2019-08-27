@@ -7,17 +7,27 @@ from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 
 import onmt
 from onmt.modules.UtilClass import glorot, zeros
-
+import math
 
 class GatedGCN(MessagePassing):
 
     def __init__(
-        self, in_channels, out_channels, edge_aware='add', edge_aggr='mean', **kwargs):
+        self, in_channels, out_channels,
+        edge_aware='add', edge_aggr='mean', num_edge_types=-1, edge_nei_fuse='uni',
+        **kwargs):
         aggr = 'add' if edge_aggr == 'weighted' else edge_aggr  # mean/max
         super(GatedGCN, self).__init__(aggr=aggr, **kwargs)
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.edge_node_fuse = nn.Linear(2 * in_channels, out_channels)
+
+        # ---- declare edge specific weights and bias parameters ---- #
+        self.num_edge_types = num_edge_types
+        self.edge_nei_fuse = edge_nei_fuse
+        if self.edge_nei_fuse == 'uni':
+            self.edge_node_linear = nn.Linear(2 * in_channels, out_channels).cuda()
+        else:
+            assert num_edge_types > 1
+            self.edge_node_linears = [nn.Linear(2*in_channels, out_channels).cuda() for _ in range(self.num_edge_types)]
 
         print(' ** [GatedGCN] edge_aware = {}'.format(edge_aware))
         self.edge_aware = edge_aware
@@ -26,17 +36,41 @@ class GatedGCN(MessagePassing):
 
         self.edge_aggr = edge_aggr
 
-    def forward(self, x, edge_index, edge_attr, edge_norm):
+    def _fuse_node_edge(self, x_i, edge_attr, edge_label):
+        edge_label = edge_label.squeeze(1)
+        concat = torch.cat([x_i, edge_attr], -1)
+        ret = torch.zeros_like(x_i, requires_grad=True)
+        for idx in range(self.num_edge_types):
+            #! get positions where the edge_label is of type idx
+            # print("\nidx = {}".format(idx))
+            # print("edge_label.eq(idx).sum() = {}".format(edge_label.eq(idx).sum()))
+            indices = edge_label.eq(idx).nonzero().squeeze(1)
+            # print("indices.gt(-1).sum() = {}".format(indices.gt(-1).sum()))
+            #! get those edges (already concat with the source nodes)
+            this_type = torch.index_select(concat, 0, indices)
+            # print("this_type = {}".format(this_type.shape))
+            #! apply edge-specific linear layer
+            trans = self.edge_node_linears[idx](this_type)
+            # print("trans = {}".format(trans.shape))
+            #! paste them back to their original positions
+            ret = ret.index_copy(0, indices, trans)
+            # print("ret = {}".format(ret[indices[0], :]))
+        return ret
 
-        return self.propagate(edge_index, x=x, edge_attr=edge_attr, edge_norm=edge_norm)
+    def forward(self, x, edge_index, edge_attr, edge_label, edge_norm):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr, edge_label=edge_label, edge_norm=edge_norm)
 
-    def message(self, edge_index_i, x_i, x_j, edge_attr, edge_norm):
+    def message(self, edge_index_i, x_i, x_j, edge_attr, edge_label, edge_norm):
 
         x_j = x_j.view(-1, self.out_channels)
         x_i = x_i.view(-1, self.out_channels)
 
         #! combine node itself with the edge types
-        node_edge_aware = self.edge_node_fuse(torch.cat([x_i, edge_attr], -1))
+        if self.edge_nei_fuse == 'uni':
+            node_edge_aware = self.edge_node_linear(torch.cat([x_i, edge_attr], -1))
+        else:
+            node_edge_aware = self._fuse_node_edge(x_i, edge_attr, edge_label)
+
         #! compute a node-edge-aware elementwise gate to filter neighbour information
         gated_neighbours = torch.sigmoid(node_edge_aware).mul(x_j)
 

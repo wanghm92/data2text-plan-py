@@ -67,7 +67,7 @@ def model_opts(parser):
                         choices=['weighted', 'mean', 'max'],
                         help="""The aggregation scheme to use for GNN. NOTE: add is weighted average by pre-defined constants""")
     group.add_argument('-encoder_graph_fuse', type=str, default='highway',
-                        choices=['dense', 'highway', 'nothing'],
+                        choices=['dense', 'highway', 'nothing', 'add'],
                         help=""" How graph neighbour information is used to apply node embedding  """)
     #! NOTE: the meaning of different encoder_outlayer types are different for Mean/Graph encoders
     group.add_argument('-encoder_outlayer', type=str, default='highway',

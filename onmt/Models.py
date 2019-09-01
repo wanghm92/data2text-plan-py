@@ -142,25 +142,11 @@ class GraphEncoder(EncoderBase):
         if self.cs_loss:
             self.hidden2logits = nn.Linear(emb_size, 1)
 
-        self.no_self_attn = no_self_attn
-        if not self.no_self_attn:
-            self.attn = onmt.modules.GlobalSelfAttention(
-                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
-
         self.conv = onmt.modules.GatedGCN(emb_size, emb_size,
                                             edge_aware=edge_aware,
                                             edge_aggr=edge_aggr,
                                             num_edge_types=num_edge_types,
                                             edge_nei_fuse=edge_nei_fuse)
-
-        self.linear_global = nn.Linear(emb_size * 2, emb_size, bias=False)
-
-        print(' ** [GraphEncoder] output_layer = {}'.format(output_layer))
-        self.output_layer = output_layer
-        if 'highway' in self.output_layer:
-            self.out_highway = onmt.modules.HighwayMLP(emb_size)
-        elif self.output_layer != 'add':
-            raise ValueError('{} is not supported'.format(self.output_layer))
 
         print(' ** [GraphEncoder] encoder_graph_fuse = {}'.format(encoder_graph_fuse))
         self.encoder_graph_fuse = encoder_graph_fuse
@@ -168,8 +154,27 @@ class GraphEncoder(EncoderBase):
             self.graph_highway = onmt.modules.HighwayMLP(emb_size)
         elif self.encoder_graph_fuse == 'dense':
             self.graph_linear = nn.Linear(emb_size * 2, emb_size)
-        elif self.encoder_graph_fuse != 'nothing':
+        elif not self.encoder_graph_fuse in ['nothing', 'add']:
             raise ValueError('{} is not supported'.format(self.encoder_graph_fuse))
+
+        print(' ** [GraphEncoder] no_self_attn = {}'.format(no_self_attn))
+        self.no_self_attn = no_self_attn
+        if not self.no_self_attn:
+            self.attn = onmt.modules.GlobalSelfAttention(
+                emb_size, coverage=coverage_attn, attn_type=attn_type, attn_hidden=attn_hidden)
+            self.linear_global = nn.Linear(emb_size * 2, emb_size, bias=False)
+        else:
+            if self.encoder_graph_fuse == 'nothing':
+                raise ValueError("no_self_attn is {} and encoder_graph_fuse cannot be {}".format(self.no_self_attn, self.encoder_graph_fuse))
+
+        print(' ** [GraphEncoder] output_layer = {}'.format(output_layer))
+        self.output_layer = output_layer
+        if not self.no_self_attn:
+            if 'highway' in self.output_layer:
+                self.out_highway = onmt.modules.HighwayMLP(emb_size)
+            elif self.output_layer != 'add':
+                raise ValueError('{} is not supported'.format(self.output_layer))
+
 
     def _node_encoding(self, graph_batch, shape, non_linear=False):
         out = self.conv(graph_batch.x, graph_batch.edge_index, graph_batch.edge_attr, graph_batch.edge_label, graph_batch.edge_norm)
@@ -180,22 +185,26 @@ class GraphEncoder(EncoderBase):
 
     def fuse_them_all(self, emb, self_attn_vectors, graph_vectors):
 
-        global_context = self.linear_global(torch.cat([emb, self_attn_vectors], 2))
-        global_gated_out = torch.sigmoid(global_context).mul(emb)
-
         if self.encoder_graph_fuse == 'highway':
             neighbour_node_fuse = self.graph_highway(emb, graph_vectors)
         elif self.encoder_graph_fuse == 'dense':
             neighbour_node_fuse = self.graph_linear(torch.cat([emb, graph_vectors], 2))
         elif self.encoder_graph_fuse == 'nothing':
             neighbour_node_fuse = graph_vectors
+        elif self.encoder_graph_fuse == 'add':
+            neighbour_node_fuse = graph_vectors + emb
 
-        if self.output_layer == 'highway-graph':
-            out = self.out_highway(global_gated_out, graph_vectors)
-        elif self.output_layer == 'highway-fuse':
-            out = self.out_highway(global_gated_out, neighbour_node_fuse)
-        elif self.output_layer == 'add':
-            out = global_gated_out + neighbour_node_fuse
+        if self_attn_vectors is not None:
+            global_context = self.linear_global(torch.cat([emb, self_attn_vectors], 2))
+            global_gated_out = torch.sigmoid(global_context).mul(emb)
+            if self.output_layer == 'highway-graph':
+                out = self.out_highway(global_gated_out, graph_vectors)
+            elif self.output_layer == 'highway-fuse':
+                out = self.out_highway(global_gated_out, neighbour_node_fuse)
+            elif self.output_layer == 'add':
+                out = global_gated_out + neighbour_node_fuse
+        else:
+            out = neighbour_node_fuse
 
         return out
 
@@ -231,7 +240,9 @@ class GraphEncoder(EncoderBase):
         s_len, batch_size, emb_dim = emb.size()
 
         # (2) gloabl self-attention node encodings
-        self_attn_vectors, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
+        self_attn_vectors = None
+        if not self.no_self_attn:
+            self_attn_vectors, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 
         # (3) local graph constrained node encodings
         data_list = self._construct_data_list(edges, emb)

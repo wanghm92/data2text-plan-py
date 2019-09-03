@@ -71,7 +71,7 @@ class MeanEncoder(EncoderBase):
         self.num_layers = num_layers
         self.table_embeddings = None
         assert isinstance(src_bundle, tuple)
-        embeddings, table_embeddings, _ = src_bundle
+        embeddings, table_embeddings, _, _ = src_bundle
         self.table_embeddings = table_embeddings
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
@@ -131,9 +131,10 @@ class GraphEncoder(EncoderBase):
         super(GraphEncoder, self).__init__()
         self.num_layers = num_layers
         assert isinstance(src_bundle, tuple)
-        embeddings, table_embeddings, edge_embeddings = src_bundle
+        embeddings, table_embeddings, edge_embeddings, graph_embeddings = src_bundle
         self.table_embeddings = table_embeddings
         self.edge_embeddings = edge_embeddings
+        self.graph_embeddings = graph_embeddings
         self.edge_aggr = edge_aggr
         self.embeddings = embeddings
         self.dropout = nn.Dropout(p=dropout)
@@ -183,16 +184,16 @@ class GraphEncoder(EncoderBase):
         out = out.reshape(shape)
         return out
 
-    def fuse_them_all(self, emb, self_attn_vectors, graph_vectors):
+    def fuse_them_all(self, emb, graph_emb, self_attn_vectors, graph_vectors):
 
         if self.encoder_graph_fuse == 'highway':
-            neighbour_node_fuse = self.graph_highway(emb, graph_vectors)
+            neighbour_node_fuse = self.graph_highway(graph_emb, graph_vectors)
         elif self.encoder_graph_fuse == 'dense':
-            neighbour_node_fuse = self.graph_linear(torch.cat([emb, graph_vectors], 2))
+            neighbour_node_fuse = self.graph_linear(torch.cat([graph_emb, graph_vectors], 2))
         elif self.encoder_graph_fuse == 'nothing':
             neighbour_node_fuse = graph_vectors
         elif self.encoder_graph_fuse == 'add':
-            neighbour_node_fuse = graph_vectors + emb
+            neighbour_node_fuse = graph_vectors + graph_emb
 
         if self_attn_vectors is not None:
             global_context = self.linear_global(torch.cat([emb, self_attn_vectors], 2))
@@ -234,22 +235,22 @@ class GraphEncoder(EncoderBase):
         src, edges = src
         self._check_args(src, edges=edges, lengths=lengths)
 
-        # (1) original node embeddings
+        # (1) original record embeddings
         emb = self.dropout(self.embeddings(src))
-        tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         s_len, batch_size, emb_dim = emb.size()
 
-        # (2) gloabl self-attention node encodings
+        # (2) gloabl self-attention record encodings
         self_attn_vectors = None
         if not self.no_self_attn:
             self_attn_vectors, _ = self.attn(emb.transpose(0, 1).contiguous(), emb.transpose(0, 1), memory_lengths=lengths)
 
         # (3) local graph constrained node encodings
-        data_list = self._construct_data_list(edges, emb)
+        graph_emb = emb if self.graph_embeddings is None else self.graph_embeddings(src)
+        data_list = self._construct_data_list(edges, graph_emb)
         graph_batch = Batch.from_data_list(data_list)
-        graph_vectors = self._node_encoding(graph_batch, emb.size())
+        graph_vectors = self._node_encoding(graph_batch, graph_emb.size())
 
-        encoder_output = self.fuse_them_all(emb, self_attn_vectors, graph_vectors)
+        encoder_output = self.fuse_them_all(emb, graph_emb, self_attn_vectors, graph_vectors)
 
         node_logits = None
         if self.cs_loss:
@@ -258,6 +259,8 @@ class GraphEncoder(EncoderBase):
         mean = encoder_output.mean(0).expand(self.num_layers, batch_size, emb_dim)
         memory_bank = encoder_output
         encoder_final = (mean, mean)
+
+        tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
         return encoder_final, (memory_bank, tbl_emb, node_logits)
 
 

@@ -16,7 +16,7 @@ from onmt.modules import Embeddings, ImageEncoder, CopyGenerator, TransformerEnc
 from onmt.Utils import use_gpu
 from pprint import pprint
 
-def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_word=False, dim=-1):
+def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_idx=-1, dim=-1):
     """
     Make an Embeddings instance.
     Args:
@@ -24,7 +24,7 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         word_dict(Vocab): words dictionary.
         feature_dicts([Vocab], optional): a list of feature dictionary.
         for_encoder(bool): make Embeddings for encoder or decoder?
-        discard_word: return only aggregated feature embeddings
+        discard_idx: the index of which feature to discard for making this embbedding, default -1
     """
     if dim == -1:
         embedding_dim = opt.src_word_vec_size if for_encoder else opt.tgt_word_vec_size
@@ -47,7 +47,7 @@ def make_embeddings(opt, word_dict, feature_dicts, for_encoder=True, discard_wor
         feat_padding_idx=feats_padding_idx,
         word_vocab_size=num_word_embeddings,
         feat_vocab_sizes=num_feat_embeddings,
-        discard_word=discard_word)
+        discard_idx=discard_idx)
 
 
 def make_encoder(opt, src_bundle, stage1=True, num_edge_types=-1):
@@ -81,7 +81,7 @@ def make_encoder(opt, src_bundle, stage1=True, num_edge_types=-1):
             raise NotImplementedError("encoder_type = {} is not implemented".format(opt.encoder_type))
     else:
         # "rnn" or "brnn"
-        embeddings, _, _ = src_bundle
+        embeddings, _, _, _ = src_bundle
         return RNNEncoder(
             opt.rnn_type, opt.brnn2, opt.enc_layers2,
             opt.rnn_size, opt.dropout, embeddings,
@@ -178,7 +178,8 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     # --- table-reconstruction ---
     table_embeddings = None
     if model_opt.trl:
-        table_embeddings = make_embeddings(model_opt, src_dict, feature_dicts, discard_word=True)
+        # 0th is word embedding, discarded for table reconstruction
+        table_embeddings = make_embeddings(model_opt, src_dict, feature_dicts, discard_idx=0)
         # reusing the same embedding weights
         print("table_embeddings.make_embedding[0] = {}".format(table_embeddings.make_embedding[0]))
         table_embeddings.word_lut.weight = src_embeddings.word_lut.weight
@@ -186,9 +187,20 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
         table_embeddings.type_lut.weight = src_embeddings.type_lut.weight
         table_embeddings.ha_lut.weight = src_embeddings.ha_lut.weight
 
+    graph_embeddings = None
+    if model_opt.discard_entity:
+        # 1st is entity (player/team) embedding, discarded for graph network input
+        graph_embeddings = make_embeddings(model_opt, src_dict, feature_dicts, discard_idx=1)
+        # reusing the same embedding weights
+        print("graph_embeddings.make_embedding[0] = {}".format(graph_embeddings.make_embedding[0]))
+        graph_embeddings.word_lut.weight = src_embeddings.word_lut.weight
+        graph_embeddings.field_lut.weight = src_embeddings.field_lut.weight
+        graph_embeddings.type_lut.weight = src_embeddings.type_lut.weight
+        graph_embeddings.ha_lut.weight = src_embeddings.ha_lut.weight
+
     #! make_encoder
     print("edge_embeddings = {}, table_embeddings = {}".format(edge_embeddings, table_embeddings))
-    src_bundle = (src_embeddings, table_embeddings, edge_embeddings)
+    src_bundle = (src_embeddings, table_embeddings, edge_embeddings, graph_embeddings)
     num_edge_types = len(fields['edge_labels'].vocab)-2  # <unk> and <blank>
     encoder = make_encoder(model_opt, src_bundle, stage1, num_edge_types=num_edge_types)
 

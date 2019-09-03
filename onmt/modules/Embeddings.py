@@ -90,7 +90,7 @@ class Embeddings(nn.Module):
         feat_padding_idx=[],
         feat_vocab_sizes=[],
         dropout=0,
-        discard_word=False):
+        discard_idx=-1):
 
         self.word_padding_idx = word_padding_idx
 
@@ -116,7 +116,7 @@ class Embeddings(nn.Module):
         emb_params = zip(vocab_sizes, emb_dims, pad_indices)
         embeddings = [nn.Embedding(vocab, dim, padding_idx=pad) for vocab, dim, pad in emb_params]
         #! lookup and merge (concat for mlp later)
-        emb_luts = Elementwise(discard_word, feat_merge, embeddings)
+        emb_luts = Elementwise(discard_idx, feat_merge, embeddings)
 
         # The final output size of word + feature vectors. This can vary
         # from the word vector size if and only if features are defined.
@@ -135,7 +135,7 @@ class Embeddings(nn.Module):
 
         if feat_merge == 'mlp' and len(feat_vocab_sizes)>0:
             in_dim = sum(emb_dims)
-            if discard_word:
+            if discard_idx > -1:
                 in_dim -= word_vec_size
             out_dim = word_vec_size
             mlp = nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU())

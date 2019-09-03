@@ -157,6 +157,8 @@ def model_opts(parser):
                         help="""Whether to use table reconstruction loss""")
     group.add_argument('-csl', action="store_true",
                         help="""Whether to use content selection BCE loss""")
+    group.add_argument('-discard_entity', action="store_true",
+                        help="""Whether to discard entity embedding (idx=1) for GNN input""")
 
 def preprocess_opts(parser):
     # Data options

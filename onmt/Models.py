@@ -116,7 +116,7 @@ class MeanEncoder(EncoderBase):
         mean = encoder_output.mean(0).expand(self.num_layers, batch, emb_dim)
         memory_bank = encoder_output
         encoder_final = (mean, mean)
-        return encoder_final, (memory_bank, tbl_emb, node_logits)
+        return encoder_final, (memory_bank, emb, tbl_emb, node_logits)
 
 
 class GraphEncoder(EncoderBase):
@@ -261,7 +261,7 @@ class GraphEncoder(EncoderBase):
         encoder_final = (mean, mean)
 
         tbl_emb = None if self.table_embeddings is None else self.table_embeddings(src)
-        return encoder_final, (memory_bank, tbl_emb, node_logits)
+        return encoder_final, (memory_bank, emb, tbl_emb, node_logits)
 
 
 class RNNEncoder(EncoderBase):
@@ -873,9 +873,10 @@ class NMTModel(nn.Module):
 
         enc_embs = None
         node_logits = None
+        stage1_emb = None
         if isinstance(memory_bank, tuple):
             #! stage1: Mean or GraphEncoder
-            memory_bank, enc_embs, node_logits = memory_bank
+            memory_bank, stage1_emb, enc_embs, node_logits = memory_bank
 
         enc_state = self.decoder.init_decoder_state(src, memory_bank, enc_final)
 
@@ -890,7 +891,7 @@ class NMTModel(nn.Module):
             # Not yet supported on multi-gpu
             dec_state = None
             attns = None
-        return decoder_outputs, attns, dec_state, (memory_bank, enc_embs, node_logits)
+        return decoder_outputs, attns, dec_state, (memory_bank, stage1_emb, enc_embs, node_logits)
 
 
 class DecoderState(object):

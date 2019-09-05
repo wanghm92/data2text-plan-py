@@ -127,7 +127,8 @@ class Trainer(object):
     def __init__(
         self, model, model2, train_loss, valid_loss, train_loss2, valid_loss2, optim, optim2,
         trunc_size=0, shard_size=32, data_type='text',
-        norm_method="sents", grad_accum_count=1, cuda= False):
+        norm_method="sents", grad_accum_count=1, cuda= False,
+        stage2_input_type='memory'):
         # Basic attributes.
         self.model = model
         self.model2 = model2
@@ -143,6 +144,7 @@ class Trainer(object):
         self.norm_method = norm_method
         self.grad_accum_count = grad_accum_count
         self.cuda = cuda
+        self.stage2_input_type = stage2_input_type
 
         assert(grad_accum_count > 0)
         if grad_accum_count > 1:
@@ -280,7 +282,7 @@ class Trainer(object):
             #! here _ is dec_state from stage1, not used
             outputs, attns, _, memory_bundle = self.model((src, None, edges), tgt, src_lengths)
             assert isinstance(memory_bundle, tuple)
-            memory_bank, enc_embs, node_logits = memory_bundle
+            memory_bank, stage1_emb, enc_embs, node_logits = memory_bundle
             # Compute loss.
             batch_stats = self.valid_loss.monolithic_compute_loss(
                     batch, outputs, attns, stage1=True, node_logits=node_logits)
@@ -292,8 +294,14 @@ class Trainer(object):
                 stats.update(batch_stats)
 
             inp_stage2 = tgt[1:-1]
+
+            if self.stage2_input_type == 'memory':
+                stage2_input = memory_bank
+            elif self.stage2_input_type == 'embedding':
+                stage2_input = stage1_emb
+
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
-                            zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+                            zip(torch.transpose(stage2_input, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
 
             trimmed_tbl_embs = None
@@ -410,7 +418,7 @@ class Trainer(object):
                     self.model.zero_grad()
                 outputs, attns, dec_state, memory_bundle = self.model((src, None, edges), tgt, src_lengths, dec_state)
                 assert isinstance(memory_bundle, tuple)
-                memory_bank, tbl_emb, node_logits = memory_bundle
+                memory_bank, stage1_emb, tbl_emb, node_logits = memory_bundle
                 # 3. Compute loss in shards for memory efficiency.
                 batch_stats = self.train_loss.sharded_compute_loss(
                         batch, outputs, attns, j,
@@ -445,9 +453,14 @@ class Trainer(object):
             _, src_lengths = batch.src2
             report_stats2.n_src_words += src_lengths.sum()
 
+            if self.stage2_input_type == 'memory':
+                stage2_input = memory_bank
+            elif self.stage2_input_type == 'embedding':
+                stage2_input = stage1_emb
+
             # memory bank is of size src_len*batch_size*dim, inp_stage2 is of size inp_len*batch_size*1
             inp_stage2 = tgt[1:-1]
-            index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+            index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in zip(torch.transpose(stage2_input, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
 
             trimmed_tbl_emb = None

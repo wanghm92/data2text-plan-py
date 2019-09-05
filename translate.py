@@ -124,7 +124,8 @@ def main():
         beam_trace=opt.dump_beam != "",
         min_length=opt.min_length,
         stepwise_penalty=opt.stepwise_penalty,
-        allow_team=opt.allow_team)
+        allow_team=opt.allow_team,
+        stage2_input_type=opt.stage2_input_type)
     builder = onmt.translate.TranslationBuilder(
         data, translator.fields,
         opt.n_best, opt.replace_unk, has_tgt=False)

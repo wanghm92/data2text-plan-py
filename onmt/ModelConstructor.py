@@ -201,7 +201,9 @@ def make_base_model(model_opt, fields, gpu, checkpoint=None, stage1=True):
     #! make_encoder
     print("edge_embeddings = {}, table_embeddings = {}".format(edge_embeddings, table_embeddings))
     src_bundle = (src_embeddings, table_embeddings, edge_embeddings, graph_embeddings)
-    num_edge_types = len(fields['edge_labels'].vocab)-2  # <unk> and <blank>
+    num_edge_types = -1
+    if edge_dict is not None:
+        num_edge_types = len(fields['edge_labels'].vocab)-2  # <unk> and <blank>
     encoder = make_encoder(model_opt, src_bundle, stage1, num_edge_types=num_edge_types)
 
     '''

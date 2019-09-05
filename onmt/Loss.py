@@ -12,7 +12,8 @@ from torch.autograd import Variable
 import onmt
 import onmt.io
 
-TGT_VOCAB_SIZE = 650  # TODO this should not be hard coded
+# TGT_VOCAB_SIZE = 638  # TODO this should not be hard coded
+TGT_VOCAB_SIZE = 117  # TODO this should not be hard coded
 class LossComputeBase(nn.Module):
     """
     Class for managing efficient loss computation. Handles

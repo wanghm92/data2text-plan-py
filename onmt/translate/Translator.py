@@ -34,6 +34,7 @@ class Translator(object):
         min_length=0,
         stepwise_penalty=False,
         allow_team=False,
+        stage2_input_type='memory'
     ):
         self.model = model
         self.model2 = model2
@@ -55,6 +56,7 @@ class Translator(object):
                 "beam_parent_ids": [],
                 "scores": [],
                 "log_probs": []}
+        self.stage2_input_type = stage2_input_type
 
     def _build_dont_mask(self, batch):
         keys = ['TEAM-NAME', 'TEAM-CITY', 'TEAM-ALIAS', 'TEAM-WINS', 'TEAM-LOSSES']
@@ -130,7 +132,7 @@ class Translator(object):
         enc_states, memory_bank = self.model.encoder((src, edges), src_lengths)
         if isinstance(memory_bank, tuple):
             #! stage1: Mean or GraphEncoder
-            memory_bank, _, _ = memory_bank  # _ is enc_embs for index_selecting tbl embeddings to compute loss in stage2
+            memory_bank, stage1_emb, _, _ = memory_bank  # _ is enc_embs for index_selecting tbl embeddings to compute loss in stage2
 
         src_lengths = torch.Tensor(batch_size).type_as(memory_bank.data) \
             .long() \
@@ -140,8 +142,12 @@ class Translator(object):
             if data_type == 'text':
                 _, src_lengths = batch.src2
             inp_stage2 = batch.tgt1_planning.unsqueeze(2)[1:-1]  # remove <sos> and <eos> tokens
+            if self.stage2_input_type == 'memory':
+                stage2_input = memory_bank
+            elif self.stage2_input_type == 'embedding':
+                stage2_input = stage1_emb
             index_select = [torch.index_select(a, 0, i).unsqueeze(0) for a, i in
-                            zip(torch.transpose(memory_bank, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
+                            zip(torch.transpose(stage2_input, 0, 1), torch.t(torch.squeeze(inp_stage2, 2)))]
             emb = torch.transpose(torch.cat(index_select), 0, 1)
             enc_states, memory_bank = self.model2.encoder((emb, None), src_lengths)
 

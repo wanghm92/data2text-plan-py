@@ -88,6 +88,9 @@ def model_opts(parser):
                         help="""Type of decoder layer to use. Non-RNN layers
                         are experimental. Options are
                         [rnn|transformer|cnn].""")
+    group.add_argument('-stage2_input_type', type=str, default='memory',
+                        choices=['memory', 'embedding'],
+                        help="""Type of decoder layer to use. Non-RNN layer""")
 
     group.add_argument('-layers', type=int, default=-1,
                         help='Number of layers in enc/dec.')

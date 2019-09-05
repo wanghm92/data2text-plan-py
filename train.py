@@ -23,7 +23,33 @@ import opts
 from pprint import pprint
 import logging
 
-# TODO: check/use xavier initialization
+
+"""
+TODO:
+
+(1) [done] Check/use xavier initialization: default seems good
+(2) ** Template-aware training:
+    (2.1) [done] design a better template and incorporate into training
+    (2.2) think about how to apply to other datasets
+    (2.3) or create another dataset
+    !(2.4) template as src for training (with trimmed content plan)
+    !(2.5) template as content plan for testing (full table as input)
+
+(3) ** Verification guided decoding/generation/training
+    (3.1) T vs T: >=< | P vs P: count,max | P vs T: lead
+    (3.2) RS|CS|CO as reward for training the planner
+    (3.3) Accuracy-based token-level reward
+!(4) Tune NCPCC baseline
+    !(4.1) Add more features: SINGLE|DOUBLE|PERCENT|OTHERS
+    !(4.2) Add author information (for wikibio|DKB person: common occupation as type embedding)
+    !(4.3) Special nodes: bench|starters|led, team_high|double,triple_double
+    !(4.4) Adam
+    !(4.5) BiLSTM --> Transformer
+    !(4.6) Embedding input for stage2
+(5) Logistics:
+    (5.1) Transfer datasets and models back
+"""
+
 
 program = os.path.basename(sys.argv[0])
 L = logging.getLogger(program)
